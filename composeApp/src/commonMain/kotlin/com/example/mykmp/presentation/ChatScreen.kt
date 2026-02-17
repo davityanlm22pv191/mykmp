@@ -1,5 +1,8 @@
 package com.example.mykmp.presentation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -118,6 +121,19 @@ fun ChatScreen(viewModel: ChatViewModel) {
 
             HorizontalDivider()
 
+            // Панель настроек (раскрывается над полем ввода)
+            AnimatedVisibility(
+                visible = uiState.isSettingsExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                SettingsPanel(
+                    config = uiState.requestConfig,
+                    onUpdateConfig = viewModel::onUpdateConfig,
+                    onReset = viewModel::onResetConfig
+                )
+            }
+
             // Поле ввода и кнопка отправки
             Row(
                 modifier = Modifier
@@ -125,6 +141,19 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Кнопка настроек ☰
+                IconButton(
+                    onClick = viewModel::onToggleSettings,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Text(
+                        text = if (uiState.isSettingsExpanded) "\u2715" else "\u2630", // ✕ или ☰
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                Spacer(Modifier.width(4.dp))
+
                 OutlinedTextField(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputChanged,

@@ -10,7 +10,10 @@ data class ClaudeRequest(
     val model: String,
     @SerialName("max_tokens")
     val maxTokens: Int,
-    val messages: List<ClaudeMessageRequest>
+    val messages: List<ClaudeMessageRequest>,
+    val system: String? = null,
+    @SerialName("stop_sequences")
+    val stopSequences: List<String>? = null
 )
 
 @Serializable

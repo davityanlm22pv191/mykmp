@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mykmp.data.api.ClaudeMessageRequest
 import com.example.mykmp.domain.model.ChatMessage
+import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,9 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val inputText: String = "",
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val requestConfig: ChatRequestConfig = ChatRequestConfig(),
+    val isSettingsExpanded: Boolean = false
 )
 
 /**
@@ -41,8 +44,29 @@ class ChatViewModel(
     }
 
     /**
+     * Переключает видимость панели настроек.
+     */
+    fun onToggleSettings() {
+        _uiState.update { it.copy(isSettingsExpanded = !it.isSettingsExpanded) }
+    }
+
+    /**
+     * Обновляет конфигурацию параметров запроса.
+     */
+    fun onUpdateConfig(config: ChatRequestConfig) {
+        _uiState.update { it.copy(requestConfig = config) }
+    }
+
+    /**
+     * Сбрасывает конфигурацию к значениям по умолчанию.
+     */
+    fun onResetConfig() {
+        _uiState.update { it.copy(requestConfig = ChatRequestConfig()) }
+    }
+
+    /**
      * Отправляет сообщение пользователя в Claude API.
-     * Добавляет сообщение в список, вызывает API, добавляет ответ.
+     * Использует текущую конфигурацию из requestConfig.
      */
     fun onSendMessage() {
         val text = _uiState.value.inputText.trim()
@@ -65,9 +89,11 @@ class ChatViewModel(
         }
 
         viewModelScope.launch {
+            val currentState = _uiState.value
+
             // Конвертируем историю чата в формат Claude API,
             // пропуская сообщения-ошибки
-            val conversationHistory = _uiState.value.messages
+            val conversationHistory = currentState.messages
                 .filter { !it.isError }
                 .map { msg ->
                     ClaudeMessageRequest(
@@ -79,7 +105,10 @@ class ChatViewModel(
                     )
                 }
 
-            val result = chatRepository.sendMessage(conversationHistory)
+            val result = chatRepository.sendMessage(
+                conversationHistory,
+                currentState.requestConfig
+            )
 
             result.fold(
                 onSuccess = { response ->
@@ -88,10 +117,17 @@ class ChatViewModel(
                         .filter { it.type == "text" }
                         .joinToString("\n") { it.text }
 
+                    // Суффикс, если ответ был обрезан или остановлен
+                    val stopSuffix = when (response.stopReason) {
+                        "max_tokens" -> "\n\n[...ответ обрезан по max_tokens]"
+                        "stop_sequence" -> "\n\n[...остановлено по stop_sequence]"
+                        else -> ""
+                    }
+
                     val assistantMessage = ChatMessage(
                         id = (++messageCounter).toString(),
                         role = ChatMessage.Role.ASSISTANT,
-                        text = assistantText,
+                        text = assistantText + stopSuffix,
                         timestamp = messageCounter
                     )
                     _uiState.update {
