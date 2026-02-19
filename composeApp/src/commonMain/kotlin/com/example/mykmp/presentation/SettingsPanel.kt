@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,9 +31,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.model.DEFAULT_MAX_TOKENS
+import com.example.mykmp.domain.model.DEFAULT_TEMPERATURE
+import com.example.mykmp.domain.model.MAX_TEMPERATURE
 import com.example.mykmp.domain.model.MAX_TOKENS_LIMIT
 import com.example.mykmp.domain.model.MIN_MAX_TOKENS
+import com.example.mykmp.domain.model.MIN_TEMPERATURE
 import com.example.mykmp.domain.model.ResponseFormatMode
+import com.example.mykmp.domain.model.TEMPERATURE_STEP
 import kotlin.math.roundToInt
 
 /**
@@ -46,7 +51,10 @@ fun SettingsPanel(
     onReset: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .heightIn(max = 400.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
@@ -54,11 +62,12 @@ fun SettingsPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             // === Заголовок ===
             Text(
+                modifier = Modifier.padding(top = 16.dp),
                 text = "Настройки запроса",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -79,6 +88,11 @@ fun SettingsPanel(
             // === Блок: Stop sequences ===
             StopSequencesSection(config, onUpdateConfig)
 
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+            // === Блок: Температура ===
+            TemperatureSection(config, onUpdateConfig)
+
             Spacer(Modifier.height(12.dp))
 
             // === Кнопка сброса ===
@@ -88,6 +102,7 @@ fun SettingsPanel(
             ) {
                 Text("Сбросить настройки")
             }
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -318,4 +333,145 @@ private fun StopSequencesSection(
             Text("+ Добавить")
         }
     }
+}
+
+/**
+ * Секция настройки температуры (temperature).
+ *
+ * Температура влияет на «случайность» ответов Claude:
+ * - 0.0 — максимально детерминированные, предсказуемые ответы
+ * - 0.7 — баланс точности и креативности (значение по умолчанию)
+ * - 1.2+ — более креативные, разнообразные, но менее предсказуемые ответы
+ *
+ * Для сравнения поведения модели при разных температурах:
+ * 1. Отключите «Значение по умолчанию модели»
+ * 2. Установите temperature = 0.0 и отправьте запрос
+ * 3. Повторите с temperature = 0.7 и 1.2
+ * 4. Сравните ответы в чате или логах (temperature видна в консоли)
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TemperatureSection(
+    config: ChatRequestConfig,
+    onUpdateConfig: (ChatRequestConfig) -> Unit
+) {
+    Text(
+        text = "Температура (temperature)",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(8.dp))
+
+    // Переключатель «Значение по умолчанию модели»
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "Значение по умолчанию модели",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Spacer(Modifier.weight(1f))
+        Switch(
+            checked = config.useDefaultTemperature,
+            onCheckedChange = { onUpdateConfig(config.copy(useDefaultTemperature = it)) }
+        )
+    }
+
+    // Текущее значение
+    val displayTemp = if (config.useDefaultTemperature) "по умолчанию" else "%.1f".format(config.temperature)
+    Text(
+        text = "Температура: $displayTemp",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(4.dp))
+
+    // Слайдер
+    Slider(
+        value = config.temperature.toFloat(),
+        onValueChange = { newValue ->
+            // Округляем до шага 0.1
+            val rounded = (newValue / TEMPERATURE_STEP).roundToInt() * TEMPERATURE_STEP
+            onUpdateConfig(config.copy(temperature = rounded.coerceIn(MIN_TEMPERATURE, MAX_TEMPERATURE)))
+        },
+        valueRange = MIN_TEMPERATURE.toFloat()..MAX_TEMPERATURE.toFloat(),
+        enabled = !config.useDefaultTemperature,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    // Метки шкалы
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("0.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("0.7", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("1.5", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    // Быстрые пресеты
+    Text(
+        text = "Быстрые пресеты:",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(4.dp))
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Пресет 0.0 — точность
+        FilterChip(
+            selected = !config.useDefaultTemperature && config.temperature == 0.0,
+            onClick = {
+                onUpdateConfig(config.copy(temperature = 0.0, useDefaultTemperature = false))
+            },
+            label = { Text("0.0 — Точный") },
+            enabled = !config.useDefaultTemperature
+        )
+        // Пресет 0.7 — баланс
+        FilterChip(
+            selected = !config.useDefaultTemperature && config.temperature == DEFAULT_TEMPERATURE,
+            onClick = {
+                onUpdateConfig(config.copy(temperature = DEFAULT_TEMPERATURE, useDefaultTemperature = false))
+            },
+            label = { Text("0.7 — Баланс") },
+            enabled = !config.useDefaultTemperature
+        )
+        // Пресет 1.2 — креатив
+        FilterChip(
+            selected = !config.useDefaultTemperature && config.temperature == 1.2,
+            onClick = {
+                onUpdateConfig(config.copy(temperature = 1.2, useDefaultTemperature = false))
+            },
+            label = { Text("1.2 — Креатив") },
+            enabled = !config.useDefaultTemperature
+        )
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    // Подсказка, зависящая от текущего значения
+    val hint = if (config.useDefaultTemperature) {
+        "API использует свою температуру по умолчанию (обычно ~1.0)."
+    } else when {
+        config.temperature <= 0.2 -> "Точные, стабильные, предсказуемые ответы. " +
+            "Подходит для: генерации кода, проверки фактов, строгих инструкций."
+        config.temperature <= 0.8 -> "Баланс точности и креативности. " +
+            "Подходит для: объяснений, улучшения текста, решений с лёгким творческим компонентом."
+        else -> "Креативные, разнообразные, менее предсказуемые ответы. " +
+            "Подходит для: генерации идей, сюжетов, нестандартных формулировок."
+    }
+
+    Text(
+        text = hint,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

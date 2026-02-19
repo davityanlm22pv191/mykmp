@@ -16,7 +16,11 @@ data class ChatRequestConfig(
     /** Включить stop_sequences */
     val useStopSequences: Boolean = false,
     /** Список стоп-последовательностей */
-    val stopSequences: List<String> = emptyList()
+    val stopSequences: List<String> = emptyList(),
+    /** Значение температуры (0.0–1.5). Используется, если useDefaultTemperature = false */
+    val temperature: Double = DEFAULT_TEMPERATURE,
+    /** Если true — temperature не передаётся в API, используется дефолт модели */
+    val useDefaultTemperature: Boolean = true
 )
 
 /**
@@ -39,3 +43,15 @@ const val MAX_TOKENS_LIMIT = 8192
 
 /** Минимальное значение max_tokens */
 const val MIN_MAX_TOKENS = 256
+
+/** Температура по умолчанию (баланс точности и креативности) */
+const val DEFAULT_TEMPERATURE = 0.7
+
+/** Минимальная температура (детерминированные ответы) */
+const val MIN_TEMPERATURE = 0.0
+
+/** Максимальная температура (максимальная креативность) */
+const val MAX_TEMPERATURE = 1.5
+
+/** Шаг слайдера температуры */
+const val TEMPERATURE_STEP = 0.1

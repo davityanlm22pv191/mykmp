@@ -160,7 +160,7 @@ class ClaudeApiModelsTest {
             messages = listOf(
                 ClaudeMessageRequest(role = "user", content = "Hi")
             )
-            // system и stopSequences по умолчанию null
+            // system, stopSequences, temperature по умолчанию null
         )
         val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
 
@@ -169,6 +169,43 @@ class ClaudeApiModelsTest {
         }
         assert(!jsonString.contains("stop_sequences")) {
             "stop_sequences=null should be omitted, got: $jsonString"
+        }
+        assert(!jsonString.contains("temperature")) {
+            "temperature=null should be omitted, got: $jsonString"
+        }
+    }
+
+    @Test
+    fun serializeRequestWithTemperature() {
+        val request = ClaudeRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024,
+            messages = listOf(
+                ClaudeMessageRequest(role = "user", content = "Hello")
+            ),
+            temperature = 0.7
+        )
+        val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
+
+        assert(jsonString.contains("\"temperature\":0.7")) {
+            "Expected temperature=0.7 in JSON, got: $jsonString"
+        }
+    }
+
+    @Test
+    fun serializeRequestWithZeroTemperature() {
+        val request = ClaudeRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024,
+            messages = listOf(
+                ClaudeMessageRequest(role = "user", content = "Hello")
+            ),
+            temperature = 0.0
+        )
+        val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
+
+        assert(jsonString.contains("\"temperature\":0.0")) {
+            "Expected temperature=0.0 in JSON, got: $jsonString"
         }
     }
 

@@ -13,7 +13,8 @@ data class ClaudeRequest(
     val messages: List<ClaudeMessageRequest>,
     val system: String? = null,
     @SerialName("stop_sequences")
-    val stopSequences: List<String>? = null
+    val stopSequences: List<String>? = null,
+    val temperature: Double? = null
 )
 
 @Serializable

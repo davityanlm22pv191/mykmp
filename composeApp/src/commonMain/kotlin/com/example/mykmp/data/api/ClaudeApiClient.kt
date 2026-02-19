@@ -4,6 +4,7 @@ import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.model.MAX_TOKENS_LIMIT
 import com.example.mykmp.domain.model.ResponseFormatMode
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
@@ -41,6 +42,11 @@ class ClaudeApiClient(
         }
         install(Logging) {
             level = LogLevel.INFO
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 120_000   // 2 минуты на весь запрос
+            connectTimeoutMillis = 30_000    // 30 секунд на подключение
+            socketTimeoutMillis = 120_000    // 2 минуты на чтение данных
         }
     }
 
@@ -109,18 +115,28 @@ class ClaudeApiClient(
                 null
             }
 
+            // Если пользователь выбрал конкретную температуру — передаём её, иначе null (API использует свой дефолт)
+            val effectiveTemperature = if (!config.useDefaultTemperature) {
+                config.temperature
+            } else {
+                null
+            }
+
             val request = ClaudeRequest(
                 model = model,
                 maxTokens = effectiveMaxTokens,
                 messages = conversationHistory,
                 system = systemPrompt,
-                stopSequences = effectiveStopSequences
+                stopSequences = effectiveStopSequences,
+                temperature = effectiveTemperature
             )
 
             val url = "$baseUrl/v1/messages"
             val requestBody = json.encodeToString(ClaudeRequest.serializer(), request)
 
-            // Логируем cURL для отладки
+            // Логируем cURL и параметры для отладки
+            val tempInfo = if (effectiveTemperature != null) "temperature=$effectiveTemperature" else "temperature=default"
+            println("┌─── Request params: max_tokens=$effectiveMaxTokens, $tempInfo ───")
             println(buildCurlCommand(url, requestBody))
 
             val response = httpClient.post(url) {
