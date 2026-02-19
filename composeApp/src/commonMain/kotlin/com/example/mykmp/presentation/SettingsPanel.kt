@@ -408,7 +408,7 @@ private fun TemperatureSection(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text("0.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("0.7", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("0.5", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("1.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
@@ -441,7 +441,7 @@ private fun TemperatureSection(
             onClick = {
                 onUpdateConfig(config.copy(temperature = DEFAULT_TEMPERATURE, useDefaultTemperature = false))
             },
-            label = { Text("0.7 — Баланс") },
+            label = { Text("0.5 — Баланс") },
             enabled = !config.useDefaultTemperature
         )
         // Пресет 1 — креатив
@@ -450,7 +450,7 @@ private fun TemperatureSection(
             onClick = {
                 onUpdateConfig(config.copy(temperature = 1.2, useDefaultTemperature = false))
             },
-            label = { Text("1.2 — Креатив") },
+            label = { Text("1 — Креатив") },
             enabled = !config.useDefaultTemperature
         )
     }
@@ -463,7 +463,7 @@ private fun TemperatureSection(
     } else when {
         config.temperature <= 0.2 -> "Точные, стабильные, предсказуемые ответы. " +
             "Подходит для: генерации кода, проверки фактов, строгих инструкций."
-        config.temperature <= 0.8 -> "Баланс точности и креативности. " +
+        config.temperature <= 0.7 -> "Баланс точности и креативности. " +
             "Подходит для: объяснений, улучшения текста, решений с лёгким творческим компонентом."
         else -> "Креативные, разнообразные, менее предсказуемые ответы. " +
             "Подходит для: генерации идей, сюжетов, нестандартных формулировок."
