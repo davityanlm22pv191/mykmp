@@ -24,10 +24,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -35,17 +39,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.Key.Companion.R
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.example.mykmp.domain.model.ChatMessage
+import kotlinx.coroutines.launch
+import myapplication.composeapp.generated.resources.Res
+import myapplication.composeapp.generated.resources.ic_copy_black
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Основной экран чата.
@@ -55,6 +69,9 @@ import com.example.mykmp.domain.model.ChatMessage
 fun ChatScreen(viewModel: ChatViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+
+    @Suppress("DEPRECATION")
+    val clipboardManager = LocalClipboardManager.current
 
     // Автоскролл к последнему сообщению при добавлении нового
     LaunchedEffect(uiState.messages.size, uiState.isLoading) {
@@ -73,7 +90,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
-        }
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -91,7 +108,10 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
                 items(uiState.messages, key = { it.id }) { message ->
-                    ChatBubble(message)
+                    ChatBubble(
+                        message = message,
+                        onCopy = { text -> clipboardManager.setText(AnnotatedString(text)) }
+                    )
                 }
 
                 // Индикатор загрузки
@@ -171,7 +191,12 @@ fun ChatScreen(viewModel: ChatViewModel) {
                                 false
                             }
                         },
-                    placeholder = { Text("Че там", style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onTertiaryFixedVariant)) },
+                    placeholder = {
+                        Text(
+                            "Че там",
+                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onTertiaryFixedVariant)
+                        )
+                    },
                     maxLines = 5,
                     label = { Text("Пиши сюда своё сообщение") },
                     enabled = !uiState.isLoading,
@@ -202,11 +227,17 @@ fun ChatScreen(viewModel: ChatViewModel) {
 }
 
 /**
- * Пузырь сообщения в чате.
+ * Пузырь сообщения в чате с кнопкой копирования.
  * User — справа (primary), Assistant — слева (surface), Error — слева (error).
+ *
+ * @param message данные сообщения
+ * @param onCopy callback для копирования текста в буфер обмена
  */
 @Composable
-private fun ChatBubble(message: ChatMessage) {
+private fun ChatBubble(
+    message: ChatMessage,
+    onCopy: (String) -> Unit
+) {
     val isUser = message.role == ChatMessage.Role.USER
 
     val backgroundColor = when {
@@ -220,31 +251,54 @@ private fun ChatBubble(message: ChatMessage) {
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val alignment = if (isUser) Arrangement.End else Arrangement.Start
+    val copyAlignment = if (isUser) Arrangement.End else Arrangement.Start
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = alignment
     ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 500.dp)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (isUser) 16.dp else 4.dp,
-                        bottomEnd = if (isUser) 4.dp else 16.dp
-                    )
-                )
-                .background(backgroundColor)
-                .padding(12.dp)
+        Column(
+            modifier = Modifier.widthIn(max = 500.dp)
         ) {
-            SelectionContainer {
-                Text(
-                    text = message.text,
-                    color = textColor,
-                    style = MaterialTheme.typography.bodyLarge
-                )
+            // Пузырь с текстом
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 16.dp,
+                            bottomStart = if (isUser) 16.dp else 4.dp,
+                            bottomEnd = if (isUser) 4.dp else 16.dp
+                        )
+                    )
+                    .background(backgroundColor)
+                    .padding(12.dp)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = message.text,
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            // Кнопка «Копировать» под пузырём
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = copyAlignment
+            ) {
+                IconButton(
+                    onClick = { onCopy(message.text) },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        painter =
+                            painterResource(Res.drawable.ic_copy_black),
+                        contentDescription = null
+                    )
+                }
             }
         }
     }
