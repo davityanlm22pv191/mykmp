@@ -45,13 +45,13 @@ const val MAX_TOKENS_LIMIT = 8192
 const val MIN_MAX_TOKENS = 256
 
 /** Температура по умолчанию (баланс точности и креативности) */
-const val DEFAULT_TEMPERATURE = 0.7
+const val DEFAULT_TEMPERATURE = 0.5
 
 /** Минимальная температура (детерминированные ответы) */
 const val MIN_TEMPERATURE = 0.0
 
 /** Максимальная температура (максимальная креативность) */
-const val MAX_TEMPERATURE = 1.5
+const val MAX_TEMPERATURE = 1.0
 
 /** Шаг слайдера температуры */
 const val TEMPERATURE_STEP = 0.1

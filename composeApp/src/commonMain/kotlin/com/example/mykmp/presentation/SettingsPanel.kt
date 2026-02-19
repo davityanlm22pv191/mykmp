@@ -409,7 +409,7 @@ private fun TemperatureSection(
     ) {
         Text("0.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("0.7", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("1.5", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("1.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
     Spacer(Modifier.height(8.dp))
@@ -435,7 +435,7 @@ private fun TemperatureSection(
             label = { Text("0.0 — Точный") },
             enabled = !config.useDefaultTemperature
         )
-        // Пресет 0.7 — баланс
+        // Пресет 0.5 — баланс
         FilterChip(
             selected = !config.useDefaultTemperature && config.temperature == DEFAULT_TEMPERATURE,
             onClick = {
@@ -444,7 +444,7 @@ private fun TemperatureSection(
             label = { Text("0.7 — Баланс") },
             enabled = !config.useDefaultTemperature
         )
-        // Пресет 1.2 — креатив
+        // Пресет 1 — креатив
         FilterChip(
             selected = !config.useDefaultTemperature && config.temperature == 1.2,
             onClick = {
