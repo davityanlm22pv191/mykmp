@@ -130,7 +130,7 @@ private fun ResponseFormatSection(
         FilterChip(
             selected = config.responseFormatMode == ResponseFormatMode.FREE_TEXT,
             onClick = { onUpdateConfig(config.copy(responseFormatMode = ResponseFormatMode.FREE_TEXT)) },
-            label = { Text("Свободный") }
+            label = { Text("Свободный ответ") }
         )
         FilterChip(
             selected = config.responseFormatMode == ResponseFormatMode.STRUCTURED_HINT,
@@ -234,7 +234,7 @@ private fun MaxTokensSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "default: $DEFAULT_MAX_TOKENS",
+            text = "По умолчанию: $DEFAULT_MAX_TOKENS",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
