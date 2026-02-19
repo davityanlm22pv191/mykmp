@@ -84,7 +84,8 @@ class ChatViewModel(
                 messages = it.messages + userMessage,
                 inputText = "",
                 isLoading = true,
-                error = null
+                error = null,
+                isSettingsExpanded = false
             )
         }
 
