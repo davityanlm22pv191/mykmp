@@ -23,12 +23,10 @@ import kotlinx.serialization.json.Json
  *
  * @param apiKey API-ключ Anthropic
  * @param baseUrl базовый URL API (по умолчанию https://api.anthropic.com)
- * @param model идентификатор модели Claude
  */
 class ClaudeApiClient(
     private val apiKey: String,
-    private val baseUrl: String = "https://api.anthropic.com",
-    private val model: String = "claude-sonnet-4-20250514"
+    private val baseUrl: String = "https://api.anthropic.com"
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -123,7 +121,7 @@ class ClaudeApiClient(
             }
 
             val request = ClaudeRequest(
-                model = model,
+                model = config.selectedModel.id,
                 maxTokens = effectiveMaxTokens,
                 messages = conversationHistory,
                 system = systemPrompt,
@@ -136,7 +134,7 @@ class ClaudeApiClient(
 
             // Логируем cURL и параметры для отладки
             val tempInfo = if (effectiveTemperature != null) "temperature=$effectiveTemperature" else "temperature=default"
-            println("┌─── Request params: max_tokens=$effectiveMaxTokens, $tempInfo ───")
+            println("┌─── Request params: model=${config.selectedModel.id}, max_tokens=$effectiveMaxTokens, $tempInfo ───")
             println(buildCurlCommand(url, requestBody))
 
             val response = httpClient.post(url) {

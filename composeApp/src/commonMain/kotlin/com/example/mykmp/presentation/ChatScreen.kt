@@ -22,6 +22,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -260,7 +263,7 @@ private fun ChatBubble(
         Column(
             modifier = Modifier.widthIn(max = 500.dp)
         ) {
-            // Пузырь с текстом
+            // Пузырь с текстом (Markdown для ассистента, plain text для пользователя)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -275,20 +278,36 @@ private fun ChatBubble(
                     .background(backgroundColor)
                     .padding(12.dp)
             ) {
-                SelectionContainer {
-                    Text(
-                        text = message.text,
-                        color = textColor,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                if (isUser || message.isError) {
+                    // Пользовательские и ошибочные сообщения — обычный текст
+                    SelectionContainer {
+                        Text(
+                            text = message.text,
+                            color = textColor,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                } else {
+                    // Ответы ассистента — рендерим Markdown с возможностью выделения
+                    SelectionContainer {
+                        Markdown(
+                            content = message.text,
+                            colors = markdownColor(text = textColor),
+                            typography = markdownTypography(
+                                text = MaterialTheme.typography.bodyLarge
+                            )
+                        )
+                    }
                 }
             }
 
-            // Кнопка «Копировать» под пузырём
+            // Панель действий и метаданных под пузырём
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = copyAlignment
+                horizontalArrangement = copyAlignment,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Кнопка «Копировать»
                 IconButton(
                     onClick = { onCopy(message.text) },
                     modifier = Modifier.size(32.dp),
@@ -297,6 +316,36 @@ private fun ChatBubble(
                         painter =
                             painterResource(Res.drawable.ic_copy_black),
                         contentDescription = null
+                    )
+                }
+
+                // Метаданные ответа (время, токены, стоимость, модель)
+                if (message.responseTimeMs != null) {
+                    Spacer(Modifier.width(4.dp))
+                    val meta = buildString {
+                        // Время ответа
+                        val seconds = message.responseTimeMs / 1000.0
+                        append("%.2f s".format(seconds))
+
+                        // Токены
+                        message.tokensUsage?.let {
+                            append(" \u00B7 ${it.totalTokens} tok")
+                        }
+
+                        // Стоимость
+                        message.costUsd?.let {
+                            append(" \u00B7 \$%.4f".format(it))
+                        }
+
+                        // Краткое имя модели
+                        message.modelDisplayName?.let {
+                            append(" \u00B7 $it")
+                        }
+                    }
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

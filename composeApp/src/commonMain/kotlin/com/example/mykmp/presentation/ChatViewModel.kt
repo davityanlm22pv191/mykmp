@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.mykmp.data.api.ClaudeMessageRequest
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ChatRequestConfig
+import com.example.mykmp.domain.model.TokensUsage
 import com.example.mykmp.domain.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -91,6 +93,7 @@ class ChatViewModel(
 
         viewModelScope.launch {
             val currentState = _uiState.value
+            val selectedModel = currentState.requestConfig.selectedModel
 
             // Конвертируем историю чата в формат Claude API,
             // пропуская сообщения-ошибки
@@ -106,10 +109,15 @@ class ChatViewModel(
                     )
                 }
 
+            // Замеряем время ответа
+            val timeMark = TimeSource.Monotonic.markNow()
+
             val result = chatRepository.sendMessage(
                 conversationHistory,
                 currentState.requestConfig
             )
+
+            val responseTimeMs = timeMark.elapsedNow().inWholeMilliseconds
 
             result.fold(
                 onSuccess = { response ->
@@ -125,11 +133,24 @@ class ChatViewModel(
                         else -> ""
                     }
 
+                    // Извлекаем usage и считаем стоимость
+                    val tokensUsage = response.usage?.let {
+                        TokensUsage(inputTokens = it.inputTokens, outputTokens = it.outputTokens)
+                    }
+                    val costUsd = tokensUsage?.let {
+                        selectedModel.calculateCost(it.inputTokens, it.outputTokens)
+                    }
+
                     val assistantMessage = ChatMessage(
                         id = (++messageCounter).toString(),
                         role = ChatMessage.Role.ASSISTANT,
                         text = assistantText + stopSuffix,
-                        timestamp = messageCounter
+                        timestamp = messageCounter,
+                        modelId = selectedModel.id,
+                        modelDisplayName = selectedModel.displayName,
+                        responseTimeMs = responseTimeMs,
+                        tokensUsage = tokensUsage,
+                        costUsd = costUsd
                     )
                     _uiState.update {
                         it.copy(
@@ -144,7 +165,10 @@ class ChatViewModel(
                         role = ChatMessage.Role.ASSISTANT,
                         text = "Error: ${error.message ?: "Unknown error"}",
                         timestamp = messageCounter,
-                        isError = true
+                        isError = true,
+                        modelId = selectedModel.id,
+                        modelDisplayName = selectedModel.displayName,
+                        responseTimeMs = responseTimeMs
                     )
                     _uiState.update {
                         it.copy(

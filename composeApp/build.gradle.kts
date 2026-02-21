@@ -63,6 +63,10 @@ kotlin {
             implementation(libs.ktor.client.logging)
             // kotlinx.serialization
             implementation(libs.kotlinx.serialization.json)
+            // Markdown renderer
+            implementation(libs.markdown.renderer.core)
+            implementation(libs.markdown.renderer.m3)
+            implementation(libs.markdown.renderer.code)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

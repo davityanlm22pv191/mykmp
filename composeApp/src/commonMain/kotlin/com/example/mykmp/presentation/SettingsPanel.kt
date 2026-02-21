@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.mykmp.domain.model.AVAILABLE_MODELS
 import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.model.DEFAULT_MAX_TOKENS
 import com.example.mykmp.domain.model.DEFAULT_TEMPERATURE
@@ -36,6 +37,7 @@ import com.example.mykmp.domain.model.MAX_TEMPERATURE
 import com.example.mykmp.domain.model.MAX_TOKENS_LIMIT
 import com.example.mykmp.domain.model.MIN_MAX_TOKENS
 import com.example.mykmp.domain.model.MIN_TEMPERATURE
+import com.example.mykmp.domain.model.ModelTier
 import com.example.mykmp.domain.model.ResponseFormatMode
 import com.example.mykmp.domain.model.TEMPERATURE_STEP
 import kotlin.math.roundToInt
@@ -74,6 +76,11 @@ fun SettingsPanel(
             )
 
             Spacer(Modifier.height(12.dp))
+
+            // === Блок: Выбор модели ===
+            ModelSelectionSection(config, onUpdateConfig)
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
             // === Блок: Формат ответа ===
             ResponseFormatSection(config, onUpdateConfig)
@@ -428,9 +435,9 @@ private fun TemperatureSection(
     ) {
         // Пресет 0.0 — точность
         FilterChip(
-            selected = !config.useDefaultTemperature && config.temperature == 0.0,
+            selected = !config.useDefaultTemperature && config.temperature == MIN_TEMPERATURE,
             onClick = {
-                onUpdateConfig(config.copy(temperature = 0.0, useDefaultTemperature = false))
+                onUpdateConfig(config.copy(temperature = MIN_TEMPERATURE, useDefaultTemperature = false))
             },
             label = { Text("0.0 — Точный") },
             enabled = !config.useDefaultTemperature
@@ -446,9 +453,9 @@ private fun TemperatureSection(
         )
         // Пресет 1 — креатив
         FilterChip(
-            selected = !config.useDefaultTemperature && config.temperature == 1.2,
+            selected = !config.useDefaultTemperature && config.temperature == MAX_TEMPERATURE,
             onClick = {
-                onUpdateConfig(config.copy(temperature = 1.2, useDefaultTemperature = false))
+                onUpdateConfig(config.copy(temperature = MAX_TEMPERATURE, useDefaultTemperature = false))
             },
             label = { Text("1 — Креатив") },
             enabled = !config.useDefaultTemperature
@@ -471,6 +478,65 @@ private fun TemperatureSection(
 
     Text(
         text = hint,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+/**
+ * Секция выбора модели Claude (WEAK / MEDIUM / STRONG).
+ *
+ * Для сравнения моделей:
+ * 1. Выберите слабую модель → отправьте запрос → запомните время/токены/стоимость.
+ * 2. Переключитесь на среднюю → повторите тот же запрос.
+ * 3. Переключитесь на сильную → повторите.
+ * 4. Сравните качество ответов, скорость и стоимость.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModelSelectionSection(
+    config: ChatRequestConfig,
+    onUpdateConfig: (ChatRequestConfig) -> Unit
+) {
+    Text(
+        text = "Модель",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(8.dp))
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        AVAILABLE_MODELS.forEach { model ->
+            val tierLabel = when (model.tier) {
+                ModelTier.WEAK -> "Быстрая"
+                ModelTier.MEDIUM -> "Баланс"
+                ModelTier.STRONG -> "Качество"
+            }
+
+            FilterChip(
+                selected = config.selectedModel.id == model.id,
+                onClick = { onUpdateConfig(config.copy(selectedModel = model)) },
+                label = { Text("${model.displayName} ($tierLabel)") }
+            )
+        }
+    }
+
+    Spacer(Modifier.height(4.dp))
+
+    // Описание выбранной модели
+    Text(
+        text = config.selectedModel.description,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    // Цена
+    Text(
+        text = "Цена: \$${config.selectedModel.inputPricePer1M}/1M вх. " +
+            "+ \$${config.selectedModel.outputPricePer1M}/1M вых. токенов",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

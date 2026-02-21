@@ -20,7 +20,9 @@ data class ChatRequestConfig(
     /** Значение температуры (0.0–1.5). Используется, если useDefaultTemperature = false */
     val temperature: Double = DEFAULT_TEMPERATURE,
     /** Если true — temperature не передаётся в API, используется дефолт модели */
-    val useDefaultTemperature: Boolean = true
+    val useDefaultTemperature: Boolean = true,
+    /** Выбранная модель для запроса */
+    val selectedModel: ModelInfo = DEFAULT_MODEL
 )
 
 /**
