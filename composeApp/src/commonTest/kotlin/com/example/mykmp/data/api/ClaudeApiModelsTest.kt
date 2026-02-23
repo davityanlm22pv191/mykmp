@@ -10,6 +10,13 @@ class ClaudeApiModelsTest {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    // JSON-конфигурация, аналогичная ClaudeApiClient
+    private val jsonNoNulls = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = false
+        explicitNulls = false
+    }
+
     @Test
     fun serializeRequest() {
         val request = ClaudeRequest(
@@ -122,6 +129,84 @@ class ClaudeApiModelsTest {
         assertEquals("error", errorResponse.type)
         assertEquals("invalid_request_error", errorResponse.error.type)
         assertEquals("Invalid API key provided", errorResponse.error.message)
+    }
+
+    @Test
+    fun serializeRequestWithSystemAndStopSequences() {
+        val request = ClaudeRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 2048,
+            messages = listOf(
+                ClaudeMessageRequest(role = "user", content = "Hello")
+            ),
+            system = "You are a helpful assistant.",
+            stopSequences = listOf("END", "STOP")
+        )
+        val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
+
+        assert(jsonString.contains("\"system\":\"You are a helpful assistant.\"")) {
+            "Expected system field in JSON, got: $jsonString"
+        }
+        assert(jsonString.contains("\"stop_sequences\":[\"END\",\"STOP\"]")) {
+            "Expected stop_sequences field in JSON, got: $jsonString"
+        }
+    }
+
+    @Test
+    fun serializeRequestNullFieldsOmitted() {
+        val request = ClaudeRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024,
+            messages = listOf(
+                ClaudeMessageRequest(role = "user", content = "Hi")
+            )
+            // system, stopSequences, temperature по умолчанию null
+        )
+        val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
+
+        assert(!jsonString.contains("system")) {
+            "system=null should be omitted, got: $jsonString"
+        }
+        assert(!jsonString.contains("stop_sequences")) {
+            "stop_sequences=null should be omitted, got: $jsonString"
+        }
+        assert(!jsonString.contains("temperature")) {
+            "temperature=null should be omitted, got: $jsonString"
+        }
+    }
+
+    @Test
+    fun serializeRequestWithTemperature() {
+        val request = ClaudeRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024,
+            messages = listOf(
+                ClaudeMessageRequest(role = "user", content = "Hello")
+            ),
+            temperature = 0.7
+        )
+        val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
+
+        assert(jsonString.contains("\"temperature\":0.7")) {
+            "Expected temperature=0.7 in JSON, got: $jsonString"
+        }
+    }
+
+    @Test
+    fun serializeRequestWithZeroTemperature() {
+        val request = ClaudeRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024,
+            messages = listOf(
+                ClaudeMessageRequest(role = "user", content = "Hello")
+            ),
+            temperature = 0.0
+        )
+        val jsonString = jsonNoNulls.encodeToString(ClaudeRequest.serializer(), request)
+
+        assert(jsonString.contains("\"temperature\":0.0")) {
+            "Expected temperature=0.0 in JSON, got: $jsonString"
+        }
     }
 
     @Test
