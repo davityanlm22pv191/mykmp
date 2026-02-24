@@ -91,7 +91,17 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                ),
+                actions = {
+                    if (uiState.messages.isNotEmpty()) {
+                        IconButton(onClick = viewModel::onClearHistory) {
+                            Text(
+                                text = "\uD83D\uDDD1",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                }
             )
         },
     ) { paddingValues ->

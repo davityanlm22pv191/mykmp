@@ -6,6 +6,7 @@ import com.example.mykmp.data.api.ClaudeMessageRequest
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.model.TokensUsage
+import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.time.TimeSource
@@ -30,13 +31,38 @@ data class ChatUiState(
  * ViewModel чата. Управляет состоянием UI и взаимодействием с Claude API.
  */
 class ChatViewModel(
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val chatHistoryRepository: ChatHistoryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var messageCounter = 0L
+
+    init {
+        loadHistory()
+        loadSettings()
+    }
+
+    private fun loadHistory() {
+        val saved = chatHistoryRepository.loadHistory()
+        if (saved.isNotEmpty()) {
+            messageCounter = saved.maxOf { it.timestamp }
+            _uiState.update { it.copy(messages = saved) }
+        }
+    }
+
+    private fun loadSettings() {
+        val saved = chatHistoryRepository.loadSettings()
+        if (saved != null) {
+            _uiState.update { it.copy(requestConfig = saved) }
+        }
+    }
+
+    private fun saveHistory() {
+        chatHistoryRepository.saveHistory(_uiState.value.messages)
+    }
 
     /**
      * Обновляет текст в поле ввода.
@@ -57,13 +83,16 @@ class ChatViewModel(
      */
     fun onUpdateConfig(config: ChatRequestConfig) {
         _uiState.update { it.copy(requestConfig = config) }
+        chatHistoryRepository.saveSettings(config)
     }
 
     /**
      * Сбрасывает конфигурацию к значениям по умолчанию.
      */
     fun onResetConfig() {
-        _uiState.update { it.copy(requestConfig = ChatRequestConfig()) }
+        val defaults = ChatRequestConfig()
+        _uiState.update { it.copy(requestConfig = defaults) }
+        chatHistoryRepository.saveSettings(defaults)
     }
 
     /**
@@ -158,6 +187,7 @@ class ChatViewModel(
                             isLoading = false
                         )
                     }
+                    saveHistory()
                 },
                 onFailure = { error ->
                     val errorMessage = ChatMessage(
@@ -177,9 +207,19 @@ class ChatViewModel(
                             error = error.message
                         )
                     }
+                    saveHistory()
                 }
             )
         }
+    }
+
+    /**
+     * Очищает историю чата и сбрасывает хранилище.
+     */
+    fun onClearHistory() {
+        messageCounter = 0L
+        _uiState.update { it.copy(messages = emptyList(), error = null) }
+        chatHistoryRepository.clearHistory()
     }
 
     /**

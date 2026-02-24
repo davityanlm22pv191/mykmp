@@ -1,5 +1,7 @@
 package com.example.mykmp.domain.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Сообщение в чате.
  *
@@ -14,6 +16,7 @@ package com.example.mykmp.domain.model
  * @param tokensUsage информация об использованных токенах (только для ASSISTANT)
  * @param costUsd ориентировочная стоимость запроса в USD (только для ASSISTANT)
  */
+@Serializable
 data class ChatMessage(
     val id: String,
     val role: Role,
@@ -34,6 +37,7 @@ data class ChatMessage(
 /**
  * Информация об использованных токенах.
  */
+@Serializable
 data class TokensUsage(
     val inputTokens: Int,
     val outputTokens: Int
