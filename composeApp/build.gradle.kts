@@ -99,16 +99,19 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // API-ключ из local.properties (файл не коммитится в Git)
+        // API-ключ: сначала local.properties, потом системное окружение
         val localProperties = Properties()
         val localPropsFile = rootProject.file("local.properties")
         if (localPropsFile.exists()) {
             localPropsFile.inputStream().use { localProperties.load(it) }
         }
+        val apiKey = localProperties.getProperty("ANTHROPIC_API_KEY")
+            ?: System.getenv("ANTHROPIC_API_KEY")
+            ?: ""
         buildConfigField(
             "String",
             "ANTHROPIC_API_KEY",
-            "\"${localProperties.getProperty("ANTHROPIC_API_KEY", "")}\""
+            "\"$apiKey\""
         )
     }
     buildFeatures {

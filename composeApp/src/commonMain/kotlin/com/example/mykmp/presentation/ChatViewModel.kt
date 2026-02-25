@@ -2,6 +2,7 @@ package com.example.mykmp.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mykmp.data.api.ApiAccessChecker
 import com.example.mykmp.data.api.ClaudeMessageRequest
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ChatRequestConfig
@@ -24,7 +25,8 @@ data class ChatUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val requestConfig: ChatRequestConfig = ChatRequestConfig(),
-    val isSettingsExpanded: Boolean = false
+    val isSettingsExpanded: Boolean = false,
+    val isGeoBlocked: Boolean = false
 )
 
 /**
@@ -38,11 +40,13 @@ class ChatViewModel(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    private val apiAccessChecker = ApiAccessChecker()
     private var messageCounter = 0L
 
     init {
         loadHistory()
         loadSettings()
+        checkApiAccess()
     }
 
     private fun loadHistory() {
@@ -57,6 +61,13 @@ class ChatViewModel(
         val saved = chatHistoryRepository.loadSettings()
         if (saved != null) {
             _uiState.update { it.copy(requestConfig = saved) }
+        }
+    }
+
+    private fun checkApiAccess() {
+        viewModelScope.launch {
+            val blocked = apiAccessChecker.isGeoBlocked()
+            _uiState.update { it.copy(isGeoBlocked = blocked) }
         }
     }
 

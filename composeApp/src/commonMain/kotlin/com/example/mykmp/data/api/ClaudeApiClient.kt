@@ -13,7 +13,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
-import io.ktor.http.contentType
+import io.ktor.http.content.TextContent
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -138,14 +138,14 @@ class ClaudeApiClient(
             println(buildCurlCommand(url, requestBody))
 
             val response = httpClient.post(url) {
-                contentType(ContentType.Application.Json)
                 header("x-api-key", apiKey)
                 header("anthropic-version", "2023-06-01")
-                setBody(request)
+                setBody(TextContent(requestBody, ContentType.Application.Json))
             }
 
             val statusCode = response.status.value
             val responseBody = response.bodyAsText()
+
             println("┌─── Response ───")
             println("HTTP $statusCode")
             println(responseBody.take(500) + if (responseBody.length > 500) "...(truncated)" else "")
