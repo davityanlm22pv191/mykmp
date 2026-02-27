@@ -44,3 +44,29 @@ data class TokensUsage(
 ) {
     val totalTokens: Int get() = inputTokens + outputTokens
 }
+
+/**
+ * Агрегированная статистика токенов по всей беседе.
+ * Не сериализуется — пересчитывается из списка сообщений.
+ */
+data class ConversationTokensStats(
+    val totalInputTokens: Int = 0,
+    val totalOutputTokens: Int = 0,
+    val totalCostUsd: Double = 0.0
+) {
+    val totalTokens: Int get() = totalInputTokens + totalOutputTokens
+}
+
+/**
+ * Вычисляет агрегированную статистику токенов из списка сообщений.
+ */
+fun List<ChatMessage>.toConversationStats(): ConversationTokensStats {
+    var input = 0
+    var output = 0
+    var cost = 0.0
+    for (msg in this) {
+        msg.tokensUsage?.let { input += it.inputTokens; output += it.outputTokens }
+        msg.costUsd?.let { cost += it }
+    }
+    return ConversationTokensStats(input, output, cost)
+}

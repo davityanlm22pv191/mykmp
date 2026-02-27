@@ -22,7 +22,9 @@ data class ChatRequestConfig(
     /** Если true — temperature не передаётся в API, используется дефолт модели */
     val useDefaultTemperature: Boolean = true,
     /** Выбранная модель для запроса */
-    val selectedModel: ModelInfo = DEFAULT_MODEL
+    val selectedModel: ModelInfo = DEFAULT_MODEL,
+    /** Размер контекстного окна — количество последних сообщений, отправляемых сырыми */
+    val contextWindowSize: Int = DEFAULT_CONTEXT_WINDOW_SIZE
 )
 
 /**
@@ -57,3 +59,15 @@ const val MAX_TEMPERATURE = 1.0
 
 /** Шаг слайдера температуры */
 const val TEMPERATURE_STEP = 0.1
+
+/** Размер контекстного окна по умолчанию (последние N сообщений отправляются сырыми) */
+const val DEFAULT_CONTEXT_WINDOW_SIZE = 10
+
+/** Минимальный размер контекстного окна */
+const val MIN_CONTEXT_WINDOW_SIZE = 4
+
+/** Максимальный размер контекстного окна */
+const val MAX_CONTEXT_WINDOW_SIZE = 40
+
+/** Шаг слайдера контекстного окна */
+const val CONTEXT_WINDOW_STEP = 2

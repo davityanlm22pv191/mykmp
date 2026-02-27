@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.example.mykmp.domain.model.ChatMessage
+import com.example.mykmp.domain.model.ConversationSummary
 import kotlinx.coroutines.launch
 import myapplication.composeapp.generated.resources.Res
 import myapplication.composeapp.generated.resources.ic_copy_black
@@ -88,7 +89,21 @@ fun ChatScreen(viewModel: ChatViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Claude Chat") },
+                title = {
+                    Column {
+                        Text("Claude Chat", style = MaterialTheme.typography.titleMedium)
+                        if (uiState.conversationStats.totalTokens > 0) {
+                            val stats = uiState.conversationStats
+                            Text(
+                                text = "\u03A3 ${formatTokenCount(stats.totalInputTokens)} in \u00B7 " +
+                                        "${formatTokenCount(stats.totalOutputTokens)} out \u00B7 " +
+                                        "\$%.4f".format(stats.totalCostUsd),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -132,6 +147,16 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
+            }
+
+            // Баннер суммаризации
+            if (uiState.conversationSummary != null || uiState.isSummarizing) {
+                SummaryBanner(
+                    summary = uiState.conversationSummary,
+                    isSummarizing = uiState.isSummarizing,
+                    isExpanded = uiState.isSummaryExpanded,
+                    onToggleExpanded = viewModel::onToggleSummaryExpanded
+                )
             }
 
             // Список сообщений
@@ -188,6 +213,16 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     config = uiState.requestConfig,
                     onUpdateConfig = viewModel::onUpdateConfig,
                     onReset = viewModel::onResetConfig
+                )
+            }
+
+            // Оценка токенов перед отправкой
+            if (uiState.inputText.isNotBlank() && uiState.estimatedInputTokens > 0) {
+                Text(
+                    text = "~${formatTokenCount(uiState.estimatedInputTokens)} tok",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 52.dp, bottom = 2.dp)
                 )
             }
 
@@ -258,6 +293,90 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Форматирует число токенов в компактный вид: 999, 1.2k, 15k
+ */
+private fun formatTokenCount(count: Int): String = when {
+    count < 1000 -> count.toString()
+    count < 10_000 -> "%.1fk".format(count / 1000.0)
+    else -> "%.0fk".format(count / 1000.0)
+}
+
+/**
+ * Баннер суммаризации: показывает количество покрытых сообщений,
+ * статус суммаризации и раскрываемый текст резюме.
+ */
+@Composable
+private fun SummaryBanner(
+    summary: ConversationSummary?,
+    isSummarizing: Boolean,
+    isExpanded: Boolean,
+    onToggleExpanded: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isSummarizing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Суммаризация...",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                } else if (summary != null) {
+                    Text(
+                        text = "\uD83D\uDCDD Суммаризировано ${summary.coveredMessageCount} сообщ.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+
+            if (summary != null) {
+                IconButton(
+                    onClick = onToggleExpanded,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Text(
+                        text = if (isExpanded) "\u25B2" else "\u25BC",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded && summary != null,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            summary?.let {
+                Text(
+                    text = it.summaryText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
     }
@@ -361,9 +480,9 @@ private fun ChatBubble(
                         val seconds = message.responseTimeMs / 1000.0
                         append("%.2f s".format(seconds))
 
-                        // Токены
+                        // Токены (input / output раздельно)
                         message.tokensUsage?.let {
-                            append(" \u00B7 ${it.totalTokens} tok")
+                            append(" \u00B7 ${formatTokenCount(it.inputTokens)} in \u00B7 ${formatTokenCount(it.outputTokens)} out")
                         }
 
                         // Стоимость

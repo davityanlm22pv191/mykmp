@@ -4,6 +4,7 @@ import com.example.mykmp.data.storage.loadFromStorage
 import com.example.mykmp.data.storage.saveToStorage
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ChatRequestConfig
+import com.example.mykmp.domain.model.ConversationSummary
 import com.example.mykmp.domain.model.SavedSettings
 import com.example.mykmp.domain.model.toConfig
 import com.example.mykmp.domain.model.toSavedSettings
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.Json
 
 private const val KEY_HISTORY = "chat_history"
 private const val KEY_SETTINGS = "chat_settings"
+private const val KEY_SUMMARY = "conversation_summary"
 
 /**
  * Реализация ChatHistoryRepository через платформо-зависимое хранилище.
@@ -46,6 +48,7 @@ class ChatHistoryRepositoryImpl : ChatHistoryRepository {
     override fun clearHistory() {
         try {
             saveToStorage(KEY_HISTORY, "[]")
+            clearSummary()
         } catch (e: Exception) {
             println("Failed to clear chat history: ${e.message}")
         }
@@ -66,6 +69,33 @@ class ChatHistoryRepositoryImpl : ChatHistoryRepository {
         } catch (e: Exception) {
             println("Failed to load settings: ${e.message}")
             null
+        }
+    }
+
+    override fun saveSummary(summary: ConversationSummary) {
+        try {
+            saveToStorage(KEY_SUMMARY, json.encodeToString(summary))
+        } catch (e: Exception) {
+            println("Failed to save conversation summary: ${e.message}")
+        }
+    }
+
+    override fun loadSummary(): ConversationSummary? {
+        return try {
+            val jsonString = loadFromStorage(KEY_SUMMARY)
+            if (jsonString.isNullOrBlank()) return null
+            json.decodeFromString<ConversationSummary>(jsonString)
+        } catch (e: Exception) {
+            println("Failed to load conversation summary: ${e.message}")
+            null
+        }
+    }
+
+    override fun clearSummary() {
+        try {
+            saveToStorage(KEY_SUMMARY, "")
+        } catch (e: Exception) {
+            println("Failed to clear conversation summary: ${e.message}")
         }
     }
 }

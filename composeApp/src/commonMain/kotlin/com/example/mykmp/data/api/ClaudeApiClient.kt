@@ -70,10 +70,15 @@ class ClaudeApiClient(
     }
 
     /**
-     * Формирует system prompt на основе конфигурации формата ответа.
+     * Формирует system prompt на основе конфигурации формата ответа
+     * и опционального резюме предыдущей части разговора.
      */
-    private fun buildSystemPrompt(config: ChatRequestConfig): String? {
-        return when (config.responseFormatMode) {
+    private fun buildSystemPrompt(config: ChatRequestConfig, summaryText: String? = null): String? {
+        val summaryPart = summaryText?.let {
+            "Резюме предыдущей части разговора:\n$it"
+        }
+
+        val formatPart = when (config.responseFormatMode) {
             ResponseFormatMode.FREE_TEXT -> null
             ResponseFormatMode.STRUCTURED_HINT -> {
                 config.formatHint.ifBlank { null }
@@ -84,6 +89,9 @@ class ClaudeApiClient(
                     "The response should be a JSON object with relevant fields."
             }
         }
+
+        val parts = listOfNotNull(summaryPart, formatPart)
+        return if (parts.isEmpty()) null else parts.joinToString("\n\n")
     }
 
     /**
@@ -95,7 +103,8 @@ class ClaudeApiClient(
      */
     suspend fun sendMessage(
         conversationHistory: List<ClaudeMessageRequest>,
-        config: ChatRequestConfig = ChatRequestConfig()
+        config: ChatRequestConfig = ChatRequestConfig(),
+        summaryText: String? = null
     ): Result<ClaudeResponse> {
         return try {
             // Формируем параметры из конфигурации
@@ -105,7 +114,7 @@ class ClaudeApiClient(
                 config.maxTokens
             }
 
-            val systemPrompt = buildSystemPrompt(config)
+            val systemPrompt = buildSystemPrompt(config, summaryText)
 
             val effectiveStopSequences = if (config.useStopSequences && config.stopSequences.isNotEmpty()) {
                 config.stopSequences

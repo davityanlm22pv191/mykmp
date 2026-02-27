@@ -30,11 +30,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.mykmp.domain.model.AVAILABLE_MODELS
+import com.example.mykmp.domain.model.CONTEXT_WINDOW_STEP
 import com.example.mykmp.domain.model.ChatRequestConfig
+import com.example.mykmp.domain.model.DEFAULT_CONTEXT_WINDOW_SIZE
 import com.example.mykmp.domain.model.DEFAULT_MAX_TOKENS
 import com.example.mykmp.domain.model.DEFAULT_TEMPERATURE
 import com.example.mykmp.domain.model.MAX_TEMPERATURE
 import com.example.mykmp.domain.model.MAX_TOKENS_LIMIT
+import com.example.mykmp.domain.model.MAX_CONTEXT_WINDOW_SIZE
+import com.example.mykmp.domain.model.MIN_CONTEXT_WINDOW_SIZE
 import com.example.mykmp.domain.model.MIN_MAX_TOKENS
 import com.example.mykmp.domain.model.MIN_TEMPERATURE
 import com.example.mykmp.domain.model.ModelTier
@@ -99,6 +103,11 @@ fun SettingsPanel(
 
             // === Блок: Температура ===
             TemperatureSection(config, onUpdateConfig)
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+            // === Блок: Контекстное окно (суммаризация) ===
+            ContextWindowSection(config, onUpdateConfig)
 
             Spacer(Modifier.height(12.dp))
 
@@ -540,4 +549,69 @@ private fun ModelSelectionSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+}
+
+/**
+ * Секция настройки контекстного окна (суммаризации).
+ * Последние N сообщений отправляются полностью, остальные — суммаризируются.
+ */
+@Composable
+private fun ContextWindowSection(
+    config: ChatRequestConfig,
+    onUpdateConfig: (ChatRequestConfig) -> Unit
+) {
+    Text(
+        text = "Контекстное окно (суммаризация)",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(4.dp))
+
+    Text(
+        text = "Последние N сообщений отправляются полностью, " +
+            "старые сообщения заменяются кратким резюме.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(8.dp))
+
+    Text(
+        text = "Размер окна: ${config.contextWindowSize} сообщений",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Slider(
+        value = config.contextWindowSize.toFloat(),
+        onValueChange = { newValue ->
+            val rounded = ((newValue / CONTEXT_WINDOW_STEP).roundToInt() * CONTEXT_WINDOW_STEP)
+                .coerceIn(MIN_CONTEXT_WINDOW_SIZE, MAX_CONTEXT_WINDOW_SIZE)
+            onUpdateConfig(config.copy(contextWindowSize = rounded))
+        },
+        valueRange = MIN_CONTEXT_WINDOW_SIZE.toFloat()..MAX_CONTEXT_WINDOW_SIZE.toFloat(),
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "$MIN_CONTEXT_WINDOW_SIZE",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "По умолчанию: $DEFAULT_CONTEXT_WINDOW_SIZE",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "$MAX_CONTEXT_WINDOW_SIZE",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }

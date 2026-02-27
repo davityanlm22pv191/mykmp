@@ -16,7 +16,8 @@ data class SavedSettings(
     val stopSequences: List<String> = emptyList(),
     val temperature: Double = DEFAULT_TEMPERATURE,
     val useDefaultTemperature: Boolean = true,
-    val selectedModelId: String = DEFAULT_MODEL.id
+    val selectedModelId: String = DEFAULT_MODEL.id,
+    val contextWindowSize: Int = DEFAULT_CONTEXT_WINDOW_SIZE
 )
 
 fun ChatRequestConfig.toSavedSettings() = SavedSettings(
@@ -28,7 +29,8 @@ fun ChatRequestConfig.toSavedSettings() = SavedSettings(
     stopSequences = stopSequences,
     temperature = temperature,
     useDefaultTemperature = useDefaultTemperature,
-    selectedModelId = selectedModel.id
+    selectedModelId = selectedModel.id,
+    contextWindowSize = contextWindowSize
 )
 
 fun SavedSettings.toConfig() = ChatRequestConfig(
@@ -44,5 +46,6 @@ fun SavedSettings.toConfig() = ChatRequestConfig(
     stopSequences = stopSequences,
     temperature = temperature,
     useDefaultTemperature = useDefaultTemperature,
-    selectedModel = AVAILABLE_MODELS.firstOrNull { it.id == selectedModelId } ?: DEFAULT_MODEL
+    selectedModel = AVAILABLE_MODELS.firstOrNull { it.id == selectedModelId } ?: DEFAULT_MODEL,
+    contextWindowSize = contextWindowSize
 )
