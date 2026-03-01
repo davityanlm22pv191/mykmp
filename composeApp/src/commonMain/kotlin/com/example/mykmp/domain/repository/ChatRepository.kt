@@ -19,6 +19,6 @@ interface ChatRepository {
     suspend fun sendMessage(
         conversationHistory: List<ClaudeMessageRequest>,
         config: ChatRequestConfig = ChatRequestConfig(),
-        summaryText: String? = null
+        systemPromptAddition: String? = null
     ): Result<ClaudeResponse>
 }

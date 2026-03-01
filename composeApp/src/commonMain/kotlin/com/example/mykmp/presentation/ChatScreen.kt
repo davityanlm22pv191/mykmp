@@ -2,7 +2,11 @@ package com.example.mykmp.presentation
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,8 +62,14 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.example.mykmp.domain.context.ConversationBranch
+import com.example.mykmp.domain.context.ContextStrategyType
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ConversationSummary
+import androidx.compose.material3.FilterChip
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import myapplication.composeapp.generated.resources.Res
 import myapplication.composeapp.generated.resources.ic_copy_black
@@ -127,8 +137,12 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 .padding(paddingValues)
                 .imePadding()
         ) {
-            // Баннер гео-блокировки
-            if (uiState.isGeoBlocked) {
+            // Всплывающий баннер VPN — выезжает сверху, исчезает через 5 сек
+            AnimatedVisibility(
+                visible = uiState.showVpnBanner,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -149,13 +163,48 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 }
             }
 
-            // Баннер суммаризации
-            if (uiState.conversationSummary != null || uiState.isSummarizing) {
+            // Auto-dismiss баннера через 5 секунд
+            LaunchedEffect(uiState.showVpnBanner) {
+                if (uiState.showVpnBanner) {
+                    delay(5000)
+                    viewModel.dismissVpnBanner()
+                }
+            }
+
+            // Баннер суммаризации (только при стратегии ROLLING_SUMMARY)
+            if (uiState.contextStrategyType == ContextStrategyType.ROLLING_SUMMARY &&
+                (uiState.conversationSummary != null || uiState.isSummarizing)
+            ) {
                 SummaryBanner(
                     summary = uiState.conversationSummary,
                     isSummarizing = uiState.isSummarizing,
                     isExpanded = uiState.isSummaryExpanded,
                     onToggleExpanded = viewModel::onToggleSummaryExpanded
+                )
+            }
+
+            // Баннер фактов (только при стратегии STICKY_FACTS)
+            if (uiState.contextStrategyType == ContextStrategyType.STICKY_FACTS &&
+                (uiState.stickyFacts.isNotEmpty() || uiState.isExtractingFacts)
+            ) {
+                FactsBanner(
+                    facts = uiState.stickyFacts,
+                    isExtracting = uiState.isExtractingFacts,
+                    isExpanded = uiState.isFactsExpanded,
+                    onToggleExpanded = viewModel::onToggleFactsExpanded
+                )
+            }
+
+            // Панель веток (только при стратегии BRANCHING)
+            if (uiState.contextStrategyType == ContextStrategyType.BRANCHING &&
+                uiState.branches.isNotEmpty()
+            ) {
+                BranchTabBar(
+                    branches = uiState.branches,
+                    activeBranchId = uiState.activeBranchId,
+                    onSwitchBranch = viewModel::onSwitchBranch,
+                    onCreateBranch = { viewModel.onCreateBranch("Ветка ${uiState.branches.size}") },
+                    onDeleteBranch = viewModel::onDeleteBranch
                 )
             }
 
@@ -212,7 +261,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 SettingsPanel(
                     config = uiState.requestConfig,
                     onUpdateConfig = viewModel::onUpdateConfig,
-                    onReset = viewModel::onResetConfig
+                    onReset = viewModel::onResetConfig,
+                    availableStrategies = uiState.availableStrategies,
+                    onSwitchStrategy = viewModel::onSwitchStrategy
                 )
             }
 
@@ -502,6 +553,148 @@ private fun ChatBubble(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Баннер ключевых фактов: показывает количество извлечённых фактов,
+ * статус экстракции и раскрываемый список фактов по категориям.
+ */
+@Composable
+private fun FactsBanner(
+    facts: Map<String, String>,
+    isExtracting: Boolean,
+    isExpanded: Boolean,
+    onToggleExpanded: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isExtracting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Извлечение фактов...",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                } else if (facts.isNotEmpty()) {
+                    Text(
+                        text = "\uD83E\uDDE0 ${facts.size} фактов извлечено",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+
+            if (facts.isNotEmpty()) {
+                IconButton(
+                    onClick = onToggleExpanded,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Text(
+                        text = if (isExpanded) "\u25B2" else "\u25BC",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded && facts.isNotEmpty(),
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                facts.forEach { (category, value) ->
+                    val label = when (category) {
+                        "userGoal" -> "Цель"
+                        "constraints" -> "Ограничения"
+                        "preferences" -> "Предпочтения"
+                        "decisions" -> "Решения"
+                        "techStack" -> "Технологии"
+                        "openQuestions" -> "Вопросы"
+                        else -> category
+                    }
+                    Text(
+                        text = "[$label] $value",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Панель вкладок веток диалога: горизонтальная прокрутка чипов.
+ * Показывает все ветки + кнопку создания новой.
+ */
+@Composable
+private fun BranchTabBar(
+    branches: List<ConversationBranch>,
+    activeBranchId: String,
+    onSwitchBranch: (String) -> Unit,
+    onCreateBranch: () -> Unit,
+    onDeleteBranch: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        branches.forEach { branch ->
+            FilterChip(
+                selected = branch.id == activeBranchId,
+                onClick = { onSwitchBranch(branch.id) },
+                label = { Text(branch.name, style = MaterialTheme.typography.labelSmall) },
+                trailingIcon = if (branch.id != "main") {
+                    {
+                        IconButton(
+                            onClick = { onDeleteBranch(branch.id) },
+                            modifier = Modifier.size(16.dp)
+                        ) {
+                            Text(
+                                "\u00D7",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                } else null
+            )
+        }
+
+        // Кнопка создания новой ветки
+        IconButton(
+            onClick = onCreateBranch,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Text(
+                "+",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

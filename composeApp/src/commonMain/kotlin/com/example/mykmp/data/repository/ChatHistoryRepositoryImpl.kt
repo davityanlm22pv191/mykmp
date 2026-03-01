@@ -15,6 +15,9 @@ import kotlinx.serialization.json.Json
 private const val KEY_HISTORY = "chat_history"
 private const val KEY_SETTINGS = "chat_settings"
 private const val KEY_SUMMARY = "conversation_summary"
+private const val KEY_STICKY_FACTS = "sticky_facts"
+private const val KEY_BRANCHING_STATE = "branching_state"
+private const val KEY_BRANCH_MESSAGES_PREFIX = "branch_"
 
 /**
  * Реализация ChatHistoryRepository через платформо-зависимое хранилище.
@@ -96,6 +99,88 @@ class ChatHistoryRepositoryImpl : ChatHistoryRepository {
             saveToStorage(KEY_SUMMARY, "")
         } catch (e: Exception) {
             println("Failed to clear conversation summary: ${e.message}")
+        }
+    }
+
+    // === Sticky Facts ===
+
+    override fun saveStickyFacts(factsJson: String) {
+        try {
+            saveToStorage(KEY_STICKY_FACTS, factsJson)
+        } catch (e: Exception) {
+            println("Failed to save sticky facts: ${e.message}")
+        }
+    }
+
+    override fun loadStickyFacts(): String? {
+        return try {
+            val value = loadFromStorage(KEY_STICKY_FACTS)
+            if (value.isNullOrBlank()) null else value
+        } catch (e: Exception) {
+            println("Failed to load sticky facts: ${e.message}")
+            null
+        }
+    }
+
+    override fun clearStickyFacts() {
+        try {
+            saveToStorage(KEY_STICKY_FACTS, "")
+        } catch (e: Exception) {
+            println("Failed to clear sticky facts: ${e.message}")
+        }
+    }
+
+    // === Branching ===
+
+    override fun saveBranchingState(stateJson: String) {
+        try {
+            saveToStorage(KEY_BRANCHING_STATE, stateJson)
+        } catch (e: Exception) {
+            println("Failed to save branching state: ${e.message}")
+        }
+    }
+
+    override fun loadBranchingState(): String? {
+        return try {
+            val value = loadFromStorage(KEY_BRANCHING_STATE)
+            if (value.isNullOrBlank()) null else value
+        } catch (e: Exception) {
+            println("Failed to load branching state: ${e.message}")
+            null
+        }
+    }
+
+    override fun clearBranchingState() {
+        try {
+            saveToStorage(KEY_BRANCHING_STATE, "")
+        } catch (e: Exception) {
+            println("Failed to clear branching state: ${e.message}")
+        }
+    }
+
+    override fun saveBranchMessages(branchId: String, messagesJson: String) {
+        try {
+            saveToStorage("${KEY_BRANCH_MESSAGES_PREFIX}${branchId}_messages", messagesJson)
+        } catch (e: Exception) {
+            println("Failed to save branch messages ($branchId): ${e.message}")
+        }
+    }
+
+    override fun loadBranchMessages(branchId: String): String? {
+        return try {
+            val value = loadFromStorage("${KEY_BRANCH_MESSAGES_PREFIX}${branchId}_messages")
+            if (value.isNullOrBlank()) null else value
+        } catch (e: Exception) {
+            println("Failed to load branch messages ($branchId): ${e.message}")
+            null
+        }
+    }
+
+    override fun clearBranchMessages(branchId: String) {
+        try {
+            saveToStorage("${KEY_BRANCH_MESSAGES_PREFIX}${branchId}_messages", "")
+        } catch (e: Exception) {
+            println("Failed to clear branch messages ($branchId): ${e.message}")
         }
     }
 }

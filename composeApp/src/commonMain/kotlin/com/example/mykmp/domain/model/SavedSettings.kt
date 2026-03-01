@@ -1,5 +1,6 @@
 package com.example.mykmp.domain.model
 
+import com.example.mykmp.domain.context.ContextStrategyType
 import kotlinx.serialization.Serializable
 
 /**
@@ -17,7 +18,8 @@ data class SavedSettings(
     val temperature: Double = DEFAULT_TEMPERATURE,
     val useDefaultTemperature: Boolean = true,
     val selectedModelId: String = DEFAULT_MODEL.id,
-    val contextWindowSize: Int = DEFAULT_CONTEXT_WINDOW_SIZE
+    val contextWindowSize: Int = DEFAULT_CONTEXT_WINDOW_SIZE,
+    val contextStrategyType: String = "ROLLING_SUMMARY"
 )
 
 fun ChatRequestConfig.toSavedSettings() = SavedSettings(
@@ -30,7 +32,8 @@ fun ChatRequestConfig.toSavedSettings() = SavedSettings(
     temperature = temperature,
     useDefaultTemperature = useDefaultTemperature,
     selectedModelId = selectedModel.id,
-    contextWindowSize = contextWindowSize
+    contextWindowSize = contextWindowSize,
+    contextStrategyType = contextStrategyType.name
 )
 
 fun SavedSettings.toConfig() = ChatRequestConfig(
@@ -47,5 +50,10 @@ fun SavedSettings.toConfig() = ChatRequestConfig(
     temperature = temperature,
     useDefaultTemperature = useDefaultTemperature,
     selectedModel = AVAILABLE_MODELS.firstOrNull { it.id == selectedModelId } ?: DEFAULT_MODEL,
-    contextWindowSize = contextWindowSize
+    contextWindowSize = contextWindowSize,
+    contextStrategyType = try {
+        ContextStrategyType.valueOf(contextStrategyType)
+    } catch (_: Exception) {
+        ContextStrategyType.ROLLING_SUMMARY
+    }
 )

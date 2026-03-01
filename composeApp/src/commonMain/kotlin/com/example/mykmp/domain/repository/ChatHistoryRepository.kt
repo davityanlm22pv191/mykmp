@@ -18,4 +18,17 @@ interface ChatHistoryRepository {
     fun saveSummary(summary: ConversationSummary)
     fun loadSummary(): ConversationSummary?
     fun clearSummary()
+
+    // Sticky Facts
+    fun saveStickyFacts(factsJson: String)
+    fun loadStickyFacts(): String?
+    fun clearStickyFacts()
+
+    // Branching
+    fun saveBranchingState(stateJson: String)
+    fun loadBranchingState(): String?
+    fun clearBranchingState()
+    fun saveBranchMessages(branchId: String, messagesJson: String)
+    fun loadBranchMessages(branchId: String): String?
+    fun clearBranchMessages(branchId: String)
 }

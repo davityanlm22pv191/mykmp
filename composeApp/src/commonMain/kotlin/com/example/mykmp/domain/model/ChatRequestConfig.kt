@@ -1,5 +1,7 @@
 package com.example.mykmp.domain.model
 
+import com.example.mykmp.domain.context.ContextStrategyType
+
 /**
  * Конфигурация параметров запроса к Claude API.
  * Хранится в ChatUiState, передаётся через всю цепочку до ClaudeApiClient.
@@ -24,7 +26,9 @@ data class ChatRequestConfig(
     /** Выбранная модель для запроса */
     val selectedModel: ModelInfo = DEFAULT_MODEL,
     /** Размер контекстного окна — количество последних сообщений, отправляемых сырыми */
-    val contextWindowSize: Int = DEFAULT_CONTEXT_WINDOW_SIZE
+    val contextWindowSize: Int = DEFAULT_CONTEXT_WINDOW_SIZE,
+    /** Активная стратегия управления контекстом */
+    val contextStrategyType: ContextStrategyType = ContextStrategyType.ROLLING_SUMMARY
 )
 
 /**

@@ -16,12 +16,12 @@ class ChatRepositoryImpl(
     override suspend fun sendMessage(
         conversationHistory: List<ClaudeMessageRequest>,
         config: ChatRequestConfig,
-        summaryText: String?
+        systemPromptAddition: String?
     ): Result<ClaudeResponse> {
         return apiClient.sendMessage(
             conversationHistory,
             config.copy(stopSequences = config.stopSequences.filter { sequence -> sequence.isNotBlank() }),
-            summaryText
+            systemPromptAddition
         )
     }
 }

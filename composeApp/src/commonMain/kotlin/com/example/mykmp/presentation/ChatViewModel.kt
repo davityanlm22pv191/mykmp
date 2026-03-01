@@ -3,7 +3,9 @@ package com.example.mykmp.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mykmp.data.api.ApiAccessChecker
-import com.example.mykmp.data.api.ClaudeMessageRequest
+import com.example.mykmp.domain.context.ConversationBranch
+import com.example.mykmp.domain.context.ContextManager
+import com.example.mykmp.domain.context.ContextStrategyType
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.model.ConversationSummary
@@ -31,19 +33,33 @@ data class ChatUiState(
     val requestConfig: ChatRequestConfig = ChatRequestConfig(),
     val isSettingsExpanded: Boolean = false,
     val isGeoBlocked: Boolean = false,
+    val showVpnBanner: Boolean = false,
     val conversationStats: ConversationTokensStats = ConversationTokensStats(),
     val estimatedInputTokens: Int = 0,
+    // Rolling Summary state (от стратегии)
     val conversationSummary: ConversationSummary? = null,
     val isSummarizing: Boolean = false,
-    val isSummaryExpanded: Boolean = false
+    val isSummaryExpanded: Boolean = false,
+    // Контекстные стратегии
+    val contextStrategyType: ContextStrategyType = ContextStrategyType.ROLLING_SUMMARY,
+    val availableStrategies: List<ContextStrategyType> = emptyList(),
+    // Sticky Facts state
+    val stickyFacts: Map<String, String> = emptyMap(),
+    val isExtractingFacts: Boolean = false,
+    val isFactsExpanded: Boolean = false,
+    // Branching state
+    val branches: List<ConversationBranch> = emptyList(),
+    val activeBranchId: String = "main"
 )
 
 /**
  * ViewModel чата. Управляет состоянием UI и взаимодействием с Claude API.
+ * Делегирует управление контекстом в ContextManager.
  */
 class ChatViewModel(
     private val chatRepository: ChatRepository,
-    private val chatHistoryRepository: ChatHistoryRepository
+    private val chatHistoryRepository: ChatHistoryRepository,
+    private val contextManager: ContextManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -51,13 +67,109 @@ class ChatViewModel(
 
     private val apiAccessChecker = ApiAccessChecker()
     private var messageCounter = 0L
-    private var conversationSummary: ConversationSummary? = null
 
     init {
+        setupStrategyCallbacks()
         loadHistory()
         loadSettings()
-        loadSummary()
+        initContextStrategy()
         checkApiAccess()
+    }
+
+    /**
+     * Устанавливает callback'и для стратегий, чтобы обновлять UI при изменении состояния.
+     */
+    private fun setupStrategyCallbacks() {
+        contextManager.rollingSummaryStrategy.onStateChanged = {
+            syncStrategyState()
+        }
+        contextManager.stickyFactsStrategy.onStateChanged = {
+            syncStrategyState()
+        }
+        contextManager.branchingStrategy.onStateChanged = {
+            syncStrategyState()
+        }
+    }
+
+    /**
+     * Инициализирует активную стратегию из сохранённых настроек.
+     */
+    private fun initContextStrategy() {
+        val strategyType = _uiState.value.requestConfig.contextStrategyType
+        contextManager.initWithType(strategyType)
+        _uiState.update { it.copy(availableStrategies = contextManager.allStrategyTypes) }
+        syncStrategyState()
+    }
+
+    /**
+     * Синхронизирует состояние активной стратегии → UI state.
+     */
+    private fun syncStrategyState() {
+        val strategy = contextManager.activeStrategy
+        when (strategy.type) {
+            ContextStrategyType.ROLLING_SUMMARY -> {
+                val rs = contextManager.rollingSummaryStrategy
+                _uiState.update {
+                    it.copy(
+                        conversationSummary = rs.currentSummary,
+                        isSummarizing = rs.isSummarizing,
+                        stickyFacts = emptyMap(),
+                        isExtractingFacts = false,
+                        contextStrategyType = strategy.type
+                    )
+                }
+            }
+            ContextStrategyType.STICKY_FACTS -> {
+                val sf = contextManager.stickyFactsStrategy
+                _uiState.update {
+                    it.copy(
+                        conversationSummary = null,
+                        isSummarizing = false,
+                        stickyFacts = sf.currentFacts,
+                        isExtractingFacts = sf.isExtracting,
+                        contextStrategyType = strategy.type
+                    )
+                }
+            }
+            ContextStrategyType.BRANCHING -> {
+                val bs = contextManager.branchingStrategy
+                _uiState.update {
+                    it.copy(
+                        conversationSummary = null,
+                        isSummarizing = false,
+                        stickyFacts = emptyMap(),
+                        isExtractingFacts = false,
+                        branches = bs.branches,
+                        activeBranchId = bs.activeBranchId,
+                        contextStrategyType = strategy.type
+                    )
+                }
+            }
+            else -> {
+                _uiState.update {
+                    it.copy(
+                        conversationSummary = null,
+                        isSummarizing = false,
+                        stickyFacts = emptyMap(),
+                        isExtractingFacts = false,
+                        branches = emptyList(),
+                        activeBranchId = "main",
+                        contextStrategyType = strategy.type
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Переключает активную стратегию контекста.
+     */
+    fun onSwitchStrategy(type: ContextStrategyType) {
+        contextManager.switchStrategy(type)
+        val config = _uiState.value.requestConfig.copy(contextStrategyType = type)
+        _uiState.update { it.copy(requestConfig = config) }
+        chatHistoryRepository.saveSettings(config)
+        syncStrategyState()
     }
 
     private fun loadHistory() {
@@ -78,18 +190,21 @@ class ChatViewModel(
         }
     }
 
-    private fun loadSummary() {
-        conversationSummary = chatHistoryRepository.loadSummary()
-        conversationSummary?.let { summary ->
-            _uiState.update { it.copy(conversationSummary = summary) }
-        }
-    }
-
     private fun checkApiAccess() {
         viewModelScope.launch {
             val blocked = apiAccessChecker.isGeoBlocked()
-            _uiState.update { it.copy(isGeoBlocked = blocked) }
+            _uiState.update { it.copy(
+                isGeoBlocked = blocked,
+                showVpnBanner = blocked
+            ) }
         }
+    }
+
+    /**
+     * Скрывает всплывающий баннер VPN (auto-dismiss или ручное закрытие).
+     */
+    fun dismissVpnBanner() {
+        _uiState.update { it.copy(showVpnBanner = false) }
     }
 
     private fun saveHistory() {
@@ -135,7 +250,7 @@ class ChatViewModel(
 
     /**
      * Отправляет сообщение пользователя в Claude API.
-     * Использует текущую конфигурацию из requestConfig.
+     * Делегирует построение контекста в ContextManager.
      */
     fun onSendMessage() {
         val text = _uiState.value.inputText.trim()
@@ -162,40 +277,20 @@ class ChatViewModel(
         viewModelScope.launch {
             val currentState = _uiState.value
             val selectedModel = currentState.requestConfig.selectedModel
-            val contextWindowSize = currentState.requestConfig.contextWindowSize
 
-            // Конвертируем историю чата в формат Claude API,
-            // пропуская сообщения-ошибки
-            val allValid = currentState.messages.filter { !it.isError }
-
-            // Контекстное окно: последние N сообщений сырыми, остальные — через summary
-            val rawMessages: List<ChatMessage>
-            val activeSummaryText: String?
-            if (allValid.size <= contextWindowSize) {
-                rawMessages = allValid
-                activeSummaryText = null
-            } else {
-                rawMessages = allValid.takeLast(contextWindowSize)
-                activeSummaryText = conversationSummary?.summaryText
-            }
-
-            val conversationHistory = rawMessages.map { msg ->
-                ClaudeMessageRequest(
-                    role = when (msg.role) {
-                        ChatMessage.Role.USER -> "user"
-                        ChatMessage.Role.ASSISTANT -> "assistant"
-                    },
-                    content = msg.text
-                )
-            }
+            // Делегируем построение контекста ContextManager
+            val contextResult = contextManager.buildContext(
+                currentState.messages,
+                currentState.requestConfig
+            )
 
             // Замеряем время ответа
             val timeMark = TimeSource.Monotonic.markNow()
 
             val result = chatRepository.sendMessage(
-                conversationHistory,
+                contextResult.messagesToSend,
                 currentState.requestConfig,
-                activeSummaryText
+                contextResult.systemPromptAddition
             )
 
             val responseTimeMs = timeMark.elapsedNow().inWholeMilliseconds
@@ -242,7 +337,12 @@ class ChatViewModel(
                         )
                     }
                     saveHistory()
-                    checkAndTriggerSummarization()
+
+                    // Делегируем пост-обработку ContextManager (суммаризация, экстракция и т.д.)
+                    contextManager.onMessageReceived(
+                        _uiState.value.messages,
+                        currentState.requestConfig
+                    )
                 },
                 onFailure = { error ->
                     val errorMessage = ChatMessage(
@@ -273,7 +373,6 @@ class ChatViewModel(
      */
     fun onClearHistory() {
         messageCounter = 0L
-        conversationSummary = null
         _uiState.update { it.copy(
             messages = emptyList(),
             error = null,
@@ -281,9 +380,17 @@ class ChatViewModel(
             estimatedInputTokens = 0,
             conversationSummary = null,
             isSummarizing = false,
-            isSummaryExpanded = false
+            isSummaryExpanded = false,
+            stickyFacts = emptyMap(),
+            isExtractingFacts = false,
+            isFactsExpanded = false,
+            branches = emptyList(),
+            activeBranchId = "main"
         ) }
         chatHistoryRepository.clearHistory()
+        // Очищаем состояние ВСЕХ стратегий, не только активной
+        contextManager.clearAllStates()
+        syncStrategyState()
     }
 
     /**
@@ -301,135 +408,40 @@ class ChatViewModel(
     }
 
     /**
-     * Проверяет условие триггера суммаризации и запускает её в фоне.
-     * Условие: totalValid - covered - N >= N
-     * (за пределами окна накопилось N несуммаризированных сообщений).
+     * Переключает раскрытие/скрытие панели фактов.
      */
-    private fun checkAndTriggerSummarization() {
-        val state = _uiState.value
-        val n = state.requestConfig.contextWindowSize
-        val totalValid = state.messages.count { !it.isError }
-        val covered = conversationSummary?.coveredMessageCount ?: 0
-
-        if (totalValid - covered - n >= n) {
-            viewModelScope.launch {
-                performSummarization()
-            }
-        }
+    fun onToggleFactsExpanded() {
+        _uiState.update { it.copy(isFactsExpanded = !it.isFactsExpanded) }
     }
 
     /**
-     * Выполняет фоновую суммаризацию: берёт сообщения за пределами окна,
-     * отправляет запрос на суммаризацию и сохраняет результат.
+     * Создаёт новую ветку диалога от текущего момента.
      */
-    private suspend fun performSummarization() {
-        if (_uiState.value.isSummarizing) return
-        _uiState.update { it.copy(isSummarizing = true) }
-
-        try {
-            val state = _uiState.value
-            val n = state.requestConfig.contextWindowSize
-            val allValid = state.messages.filter { !it.isError }
-            val previousCovered = conversationSummary?.coveredMessageCount ?: 0
-
-            // Сообщения за пределами окна
-            val outsideWindow = allValid.dropLast(n)
-            // Из них — новые, не покрытые предыдущим резюме
-            val newBatch = outsideWindow.drop(previousCovered)
-
-            if (newBatch.isEmpty()) {
-                _uiState.update { it.copy(isSummarizing = false) }
-                return
-            }
-
-            val existingSummary = conversationSummary?.summaryText
-            val prompt = buildSummarizationPrompt(existingSummary, newBatch)
-
-            // Конфиг для суммаризации: temperature=0, maxTokens=2048, FREE_TEXT, та же модель
-            val summaryConfig = state.requestConfig.copy(
-                useDefaultTemperature = false,
-                temperature = 0.0,
-                maxTokens = 2048,
-                useMaxTokensLimit = false,
-                responseFormatMode = ResponseFormatMode.FREE_TEXT,
-                formatHint = "",
-                useStopSequences = false,
-                stopSequences = emptyList()
-            )
-
-            val result = chatRepository.sendMessage(
-                listOf(ClaudeMessageRequest(role = "user", content = prompt)),
-                summaryConfig,
-                null // Не передаём summary в запрос на суммаризацию — иначе рекурсия
-            )
-
-            result.fold(
-                onSuccess = { response ->
-                    val summaryText = response.content
-                        .filter { it.type == "text" }
-                        .joinToString("\n") { it.text }
-
-                    val newSummary = ConversationSummary(
-                        summaryText = summaryText,
-                        coveredMessageCount = outsideWindow.size,
-                        createdAt = messageCounter,
-                        modelId = state.requestConfig.selectedModel.id
-                    )
-                    conversationSummary = newSummary
-                    chatHistoryRepository.saveSummary(newSummary)
-                    _uiState.update { it.copy(
-                        isSummarizing = false,
-                        conversationSummary = newSummary
-                    ) }
-                    println("✅ Суммаризация завершена: покрыто ${outsideWindow.size} сообщений")
-                },
-                onFailure = { error ->
-                    println("❌ Ошибка суммаризации: ${error.message}")
-                    _uiState.update { it.copy(isSummarizing = false) }
-                }
-            )
-        } catch (e: Exception) {
-            println("❌ Ошибка суммаризации: ${e.message}")
-            _uiState.update { it.copy(isSummarizing = false) }
-        }
+    fun onCreateBranch(name: String) {
+        val messages = _uiState.value.messages
+        contextManager.branchingStrategy.createBranch(name, messages)
+        syncStrategyState()
     }
 
     /**
-     * Формирует промпт для суммаризации диалога.
+     * Переключает активную ветку диалога.
      */
-    private fun buildSummarizationPrompt(
-        existingSummary: String?,
-        newMessages: List<ChatMessage>
-    ): String {
-        return buildString {
-            appendLine("Создай краткое резюме диалога. Сохрани все ключевые факты, решения, контекст и договорённости.")
-            appendLine("Резюме должно быть достаточно подробным, чтобы продолжить разговор без потери контекста.")
-            appendLine("Пиши на том же языке, на котором велась беседа.")
-            appendLine()
+    fun onSwitchBranch(branchId: String) {
+        contextManager.branchingStrategy.switchBranch(branchId)
+        syncStrategyState()
+    }
 
-            if (!existingSummary.isNullOrBlank()) {
-                appendLine("=== Предыдущее резюме ===")
-                appendLine(existingSummary)
-                appendLine()
-            }
-
-            appendLine("=== Новые сообщения для суммаризации ===")
-            for (msg in newMessages) {
-                val role = when (msg.role) {
-                    ChatMessage.Role.USER -> "Пользователь"
-                    ChatMessage.Role.ASSISTANT -> "Ассистент"
-                }
-                appendLine("$role: ${msg.text}")
-                appendLine()
-            }
-
-            appendLine("Создай обновлённое резюме, объединив предыдущее резюме (если есть) и новые сообщения.")
-        }
+    /**
+     * Удаляет ветку диалога.
+     */
+    fun onDeleteBranch(branchId: String) {
+        contextManager.branchingStrategy.deleteBranch(branchId)
+        syncStrategyState()
     }
 
     /**
      * Приближённая оценка входных токенов до отправки запроса.
-     * Учитывает system prompt, контекстное окно (N последних сообщений), summary, текущий ввод.
+     * Учитывает активную стратегию, system prompt, контекстное окно, текущий ввод.
      * ~3.5 символа ≈ 1 токен (компромисс между кириллицей и латиницей).
      * +30 символов на оверхед форматирования каждого сообщения (role, структура JSON).
      */
@@ -441,11 +453,27 @@ class ChatViewModel(
         if (currentInput.isBlank()) return 0
         var chars = 0
 
-        // Summary в system prompt (если есть и окно активно)
         val allValid = messages.filter { !it.isError }
         val contextWindowSize = config.contextWindowSize
-        if (allValid.size > contextWindowSize) {
-            conversationSummary?.summaryText?.let { chars += it.length + 60 }
+
+        // Strategy-specific additions
+        when (config.contextStrategyType) {
+            ContextStrategyType.ROLLING_SUMMARY -> {
+                if (allValid.size > contextWindowSize) {
+                    contextManager.rollingSummaryStrategy.currentSummary?.summaryText?.let {
+                        chars += it.length + 60
+                    }
+                }
+            }
+            ContextStrategyType.STICKY_FACTS -> {
+                val facts = contextManager.stickyFactsStrategy.currentFacts
+                if (facts.isNotEmpty()) {
+                    for ((_, value) in facts) {
+                        chars += value.length + 40 // label + formatting
+                    }
+                }
+            }
+            else -> { /* другие стратегии будут добавлены позже */ }
         }
 
         // System prompt (format)

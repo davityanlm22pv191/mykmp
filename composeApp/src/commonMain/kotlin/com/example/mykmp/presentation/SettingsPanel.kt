@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.mykmp.domain.context.ContextStrategyType
 import com.example.mykmp.domain.model.AVAILABLE_MODELS
 import com.example.mykmp.domain.model.CONTEXT_WINDOW_STEP
 import com.example.mykmp.domain.model.ChatRequestConfig
@@ -54,7 +55,9 @@ import kotlin.math.roundToInt
 fun SettingsPanel(
     config: ChatRequestConfig,
     onUpdateConfig: (ChatRequestConfig) -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    availableStrategies: List<ContextStrategyType> = emptyList(),
+    onSwitchStrategy: (ContextStrategyType) -> Unit = {}
 ) {
     Card(
         modifier = Modifier
@@ -106,8 +109,8 @@ fun SettingsPanel(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
-            // === Блок: Контекстное окно (суммаризация) ===
-            ContextWindowSection(config, onUpdateConfig)
+            // === Блок: Стратегия контекста ===
+            ContextStrategySection(config, onUpdateConfig, availableStrategies, onSwitchStrategy)
 
             Spacer(Modifier.height(12.dp))
 
@@ -552,31 +555,52 @@ private fun ModelSelectionSection(
 }
 
 /**
- * Секция настройки контекстного окна (суммаризации).
- * Последние N сообщений отправляются полностью, остальные — суммаризируются.
+ * Секция выбора стратегии контекста и настройки контекстного окна.
+ * Показывает доступные стратегии как чипы, описание активной стратегии, слайдер окна.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ContextWindowSection(
+private fun ContextStrategySection(
     config: ChatRequestConfig,
-    onUpdateConfig: (ChatRequestConfig) -> Unit
+    onUpdateConfig: (ChatRequestConfig) -> Unit,
+    availableStrategies: List<ContextStrategyType>,
+    onSwitchStrategy: (ContextStrategyType) -> Unit
 ) {
     Text(
-        text = "Контекстное окно (суммаризация)",
+        text = "Стратегия контекста",
         style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
-    Spacer(Modifier.height(4.dp))
-
-    Text(
-        text = "Последние N сообщений отправляются полностью, " +
-            "старые сообщения заменяются кратким резюме.",
-        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     Spacer(Modifier.height(8.dp))
 
+    // Чипы выбора стратегии
+    if (availableStrategies.isNotEmpty()) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            availableStrategies.forEach { strategy ->
+                FilterChip(
+                    selected = config.contextStrategyType == strategy,
+                    onClick = { onSwitchStrategy(strategy) },
+                    label = { Text(strategy.displayName()) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // Описание активной стратегии
+        Text(
+            text = config.contextStrategyType.description(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // Слайдер размера окна (общий для всех стратегий)
     Text(
         text = "Размер окна: ${config.contextWindowSize} сообщений",
         style = MaterialTheme.typography.bodySmall,

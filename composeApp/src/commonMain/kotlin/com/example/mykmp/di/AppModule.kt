@@ -4,6 +4,7 @@ import com.example.mykmp.config.getApiKey
 import com.example.mykmp.data.api.ClaudeApiClient
 import com.example.mykmp.data.repository.ChatHistoryRepositoryImpl
 import com.example.mykmp.data.repository.ChatRepositoryImpl
+import com.example.mykmp.domain.context.ContextManager
 import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
 import com.example.mykmp.presentation.ChatViewModel
@@ -33,10 +34,14 @@ object AppModule {
         ChatHistoryRepositoryImpl()
     }
 
+    private val contextManager: ContextManager by lazy {
+        ContextManager(chatRepository, chatHistoryRepository)
+    }
+
     /**
      * Создаёт новый экземпляр ChatViewModel.
      */
     fun createChatViewModel(): ChatViewModel {
-        return ChatViewModel(chatRepository, chatHistoryRepository)
+        return ChatViewModel(chatRepository, chatHistoryRepository, contextManager)
     }
 }
