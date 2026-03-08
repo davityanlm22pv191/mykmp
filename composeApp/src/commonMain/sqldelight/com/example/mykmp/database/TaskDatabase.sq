@@ -73,3 +73,50 @@ INSERT INTO TaskArtifacts(taskId, name, content, type, createdAt) VALUES (?, ?, 
 
 getArtifacts:
 SELECT * FROM TaskArtifacts WHERE taskId = ? ORDER BY createdAt ASC;
+
+-- =============================================
+-- Инварианты (ненарушимые правила)
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS Invariants (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    constraintText TEXT NOT NULL,
+    description TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    taskId TEXT,
+    createdAt INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'user'
+);
+
+CREATE TABLE IF NOT EXISTS InvariantViolations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invariantId TEXT NOT NULL,
+    messageId TEXT NOT NULL,
+    violationReason TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    timestamp INTEGER NOT NULL
+);
+
+getAllInvariants:
+SELECT * FROM Invariants ORDER BY priority ASC, createdAt ASC;
+
+getGlobalInvariants:
+SELECT * FROM Invariants WHERE taskId IS NULL ORDER BY priority ASC, createdAt ASC;
+
+getInvariantsForTask:
+SELECT * FROM Invariants WHERE taskId IS NULL OR taskId = ?
+ORDER BY priority ASC, createdAt ASC;
+
+insertInvariant:
+INSERT OR REPLACE INTO Invariants VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteInvariant:
+DELETE FROM Invariants WHERE id = ?;
+
+insertViolation:
+INSERT INTO InvariantViolations(invariantId, messageId, violationReason, severity, timestamp)
+VALUES (?, ?, ?, ?, ?);
+
+getViolationsForMessage:
+SELECT * FROM InvariantViolations WHERE messageId = ? ORDER BY timestamp ASC;

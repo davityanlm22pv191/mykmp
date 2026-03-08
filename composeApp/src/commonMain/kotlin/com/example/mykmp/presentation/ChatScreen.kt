@@ -24,6 +24,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.example.mykmp.domain.context.ContextStrategyType
 import com.example.mykmp.domain.context.ConversationBranch
+import com.example.mykmp.domain.invariant.InvariantCheckResult
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ConversationSummary
 import com.mikepenz.markdown.m3.Markdown
@@ -39,7 +40,11 @@ import org.jetbrains.compose.resources.painterResource
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel, onNavigateToDashboard: () -> Unit = {}) {
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    onNavigateToDashboard: () -> Unit = {},
+    onNavigateToInvariants: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
@@ -77,6 +82,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToDashboard: () -> Unit = {})
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
                 actions = {
+                    // Кнопка инвариантов 🛡️ — переход к InvariantsScreen
+                    IconButton(onClick = onNavigateToInvariants) {
+                        Text(
+                            text = if (uiState.hasInvariants) "\uD83D\uDEE1\uFE0F" else "\uD83D\uDEE1",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
                     // Кнопка задач 📋 — переход к TaskDashboard
                     IconButton(onClick = onNavigateToDashboard) {
                         Text(
@@ -202,7 +214,15 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToDashboard: () -> Unit = {})
                 items(uiState.messages, key = { it.id }) { message ->
                     ChatBubble(
                         message = message,
-                        onCopy = { text -> clipboardManager.setText(AnnotatedString(text)) }
+                        onCopy = { text -> clipboardManager.setText(AnnotatedString(text)) },
+                        onCheckInvariants = if (
+                            message.role == ChatMessage.Role.ASSISTANT &&
+                            !message.isError &&
+                            uiState.hasInvariants
+                        ) {
+                            { text -> viewModel.onCheckMessageInvariants(message.id, text) }
+                        } else null,
+                        invariantCheckResult = uiState.invariantCheckResults[message.id]
                     )
                 }
 
@@ -515,7 +535,9 @@ private fun SummaryBanner(
 @Composable
 private fun ChatBubble(
     message: ChatMessage,
-    onCopy: (String) -> Unit
+    onCopy: (String) -> Unit,
+    onCheckInvariants: ((String) -> Unit)? = null,
+    invariantCheckResult: InvariantCheckResult? = null
 ) {
     val isUser = message.role == ChatMessage.Role.USER
 
@@ -595,6 +617,28 @@ private fun ChatBubble(
                     )
                 }
 
+                // Кнопка «Проверка инвариантности» 🛡️ (только для ответов ассистента)
+                if (onCheckInvariants != null) {
+                    IconButton(
+                        onClick = { onCheckInvariants(message.text) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        when (invariantCheckResult) {
+                            is InvariantCheckResult.Loading ->
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            is InvariantCheckResult.NoViolations ->
+                                Text("✅", style = MaterialTheme.typography.labelSmall)
+                            is InvariantCheckResult.HasViolations ->
+                                Text("⚠️", style = MaterialTheme.typography.labelSmall)
+                            null ->
+                                Text("\uD83D\uDEE1", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+
                 // Метаданные ответа (время, токены, стоимость, модель)
                 if (message.responseTimeMs != null) {
                     Spacer(Modifier.width(4.dp))
@@ -623,6 +667,21 @@ private fun ChatBubble(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // Отображение нарушений инвариантов под пузырём
+            val checkResult = invariantCheckResult
+            if (checkResult is InvariantCheckResult.HasViolations) {
+                Column(modifier = Modifier.padding(start = 4.dp, top = 2.dp)) {
+                    checkResult.items.forEach { violation ->
+                        Text(
+                            text = "❌ ${violation.invariantId}: ${violation.violationReason}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(vertical = 1.dp)
+                        )
+                    }
                 }
             }
         }

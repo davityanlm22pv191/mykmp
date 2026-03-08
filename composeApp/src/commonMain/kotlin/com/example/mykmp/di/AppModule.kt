@@ -6,6 +6,9 @@ import com.example.mykmp.data.database.DatabaseDriverFactory
 import com.example.mykmp.data.repository.*
 import com.example.mykmp.database.TaskDatabase
 import com.example.mykmp.domain.context.ContextManager
+import com.example.mykmp.domain.invariant.InvariantManager
+import com.example.mykmp.domain.invariant.InvariantManagerImpl
+import com.example.mykmp.domain.invariant.InvariantRepository
 import com.example.mykmp.domain.memory.MemoryManager
 import com.example.mykmp.domain.memory.MemoryManagerImpl
 import com.example.mykmp.domain.memory.MemoryRepository
@@ -18,6 +21,7 @@ import com.example.mykmp.domain.task.TaskRepository
 import com.example.mykmp.domain.task.TaskStateMachine
 import com.example.mykmp.domain.task.TaskStateMachineImpl
 import com.example.mykmp.presentation.ChatViewModel
+import com.example.mykmp.presentation.InvariantsViewModel
 import com.example.mykmp.presentation.TaskDashboardViewModel
 
 /**
@@ -85,13 +89,22 @@ object AppModule {
         TaskStateMachineImpl(taskRepository)
     }
 
+    private val invariantRepository: InvariantRepository by lazy {
+        val db = taskDatabase ?: throw IllegalStateException("TaskDatabase недоступна")
+        InvariantRepositoryImpl(db)
+    }
+
+    private val invariantManager: InvariantManager by lazy {
+        InvariantManagerImpl(invariantRepository)
+    }
+
     /**
      * Создаёт новый экземпляр ChatViewModel.
      */
     fun createChatViewModel(): ChatViewModel {
         return ChatViewModel(
             chatRepository, chatHistoryRepository, contextManager,
-            memoryManager, profileManager, taskStateMachine
+            memoryManager, profileManager, taskStateMachine, invariantManager
         )
     }
 
@@ -100,5 +113,12 @@ object AppModule {
      */
     fun createTaskDashboardViewModel(): TaskDashboardViewModel {
         return TaskDashboardViewModel(taskStateMachine, taskRepository)
+    }
+
+    /**
+     * Создаёт новый экземпляр InvariantsViewModel.
+     */
+    fun createInvariantsViewModel(): InvariantsViewModel {
+        return InvariantsViewModel(invariantManager, taskRepository)
     }
 }

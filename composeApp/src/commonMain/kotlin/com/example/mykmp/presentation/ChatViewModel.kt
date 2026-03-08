@@ -6,6 +6,8 @@ import com.example.mykmp.data.api.ApiAccessChecker
 import com.example.mykmp.domain.context.ContextManager
 import com.example.mykmp.domain.context.ContextStrategyType
 import com.example.mykmp.domain.context.ConversationBranch
+import com.example.mykmp.domain.invariant.InvariantCheckResult
+import com.example.mykmp.domain.invariant.InvariantManager
 import com.example.mykmp.domain.memory.LongTermFact
 import com.example.mykmp.domain.memory.MemoryCategory
 import com.example.mykmp.domain.memory.MemoryManager
@@ -76,7 +78,10 @@ data class ChatUiState(
     // Активная задача FSM
     val activeTask: Task? = null,
     val taskSuggestion: ExpectedAction? = null,
-    val hasTaskSuggestion: Boolean = false
+    val hasTaskSuggestion: Boolean = false,
+    // Инварианты
+    val hasInvariants: Boolean = false,
+    val invariantCheckResults: Map<String, InvariantCheckResult> = emptyMap()
 )
 
 /**
@@ -89,7 +94,8 @@ class ChatViewModel(
     private val contextManager: ContextManager,
     private val memoryManager: MemoryManager,
     private val profileManager: ProfileManager,
-    private val taskStateMachine: TaskStateMachine
+    private val taskStateMachine: TaskStateMachine,
+    private val invariantManager: InvariantManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -102,12 +108,14 @@ class ChatViewModel(
         setupStrategyCallbacks()
         setupProfileCallbacks()
         setupTaskCallbacks()
+        setupInvariantCallbacks()
         loadHistory()
         loadSettings()
         initContextStrategy()
         syncMemoryState()
         syncProfileState()
         syncTaskState()
+        syncInvariantState()
         checkApiAccess()
     }
 
@@ -125,6 +133,13 @@ class ChatViewModel(
     private fun setupTaskCallbacks() {
         taskStateMachine.onStateChanged = { syncTaskState() }
         taskStateMachine.onSuggestionReady = { action -> onTaskSuggestion(action) }
+    }
+
+    /**
+     * Устанавливает callback'и для InvariantManager.
+     */
+    private fun setupInvariantCallbacks() {
+        invariantManager.onStateChanged = { syncInvariantState() }
     }
 
     /**
@@ -345,11 +360,15 @@ class ChatViewModel(
                 currentState.requestConfig
             )
 
-            // Комбинируем system prompt: профиль → стратегия → память → задача
+            // Комбинируем system prompt: инварианты (первыми!) → профиль → стратегия → память → задача
+            val invariantPrompt = invariantManager.buildConstraintPrompt(
+                taskStateMachine.activeTask?.taskId
+            )
             val profilePrompt = profileManager.buildPersonalizationPrompt()
             val memoryPrompt = memoryManager.buildMemoryPrompt()
             val taskPrompt = taskStateMachine.getSystemPromptAddition()
             val combinedSystemAddition = listOfNotNull(
+                invariantPrompt,        // ← ПЕРВЫМ (высший приоритет)
                 profilePrompt,
                 contextResult.systemPromptAddition,
                 memoryPrompt,
@@ -819,6 +838,45 @@ class ChatViewModel(
 
     private fun onTaskSuggestion(action: ExpectedAction) {
         _uiState.update { it.copy(taskSuggestion = action, hasTaskSuggestion = true) }
+    }
+
+    // === Инварианты ===
+
+    /**
+     * On-demand проверка сообщения ассистента на нарушение инвариантов.
+     * Показывает Loading → выполняет отдельный вызов Claude → обновляет результат.
+     */
+    fun onCheckMessageInvariants(messageId: String, messageText: String) {
+        viewModelScope.launch {
+            // Показываем индикатор загрузки
+            _uiState.update { state ->
+                state.copy(
+                    invariantCheckResults = state.invariantCheckResults + (messageId to InvariantCheckResult.Loading)
+                )
+            }
+            val result = invariantManager.checkMessage(
+                messageId = messageId,
+                messageText = messageText,
+                taskId = taskStateMachine.activeTask?.taskId,
+                chatRepository = chatRepository,
+                config = _uiState.value.requestConfig
+            )
+            _uiState.update { state ->
+                state.copy(
+                    invariantCheckResults = state.invariantCheckResults + (messageId to result)
+                )
+            }
+        }
+    }
+
+    /**
+     * Синхронизирует hasInvariants → UI state.
+     */
+    private fun syncInvariantState() {
+        viewModelScope.launch {
+            val count = invariantManager.getAllInvariants().size
+            _uiState.update { it.copy(hasInvariants = count > 0) }
+        }
     }
 
     /**
