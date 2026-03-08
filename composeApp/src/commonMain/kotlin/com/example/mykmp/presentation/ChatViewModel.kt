@@ -3,28 +3,25 @@ package com.example.mykmp.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mykmp.data.api.ApiAccessChecker
-import com.example.mykmp.domain.context.ConversationBranch
 import com.example.mykmp.domain.context.ContextManager
 import com.example.mykmp.domain.context.ContextStrategyType
+import com.example.mykmp.domain.context.ConversationBranch
 import com.example.mykmp.domain.memory.LongTermFact
 import com.example.mykmp.domain.memory.MemoryCategory
 import com.example.mykmp.domain.memory.MemoryManager
 import com.example.mykmp.domain.memory.TaskMemory
-import com.example.mykmp.domain.model.ChatMessage
-import com.example.mykmp.domain.model.ChatRequestConfig
-import com.example.mykmp.domain.model.ConversationSummary
-import com.example.mykmp.domain.model.ConversationTokensStats
-import com.example.mykmp.domain.model.ResponseFormatMode
-import com.example.mykmp.domain.model.TokensUsage
-import com.example.mykmp.domain.model.toConversationStats
+import com.example.mykmp.domain.model.*
+import com.example.mykmp.domain.profile.ProfileManager
+import com.example.mykmp.domain.profile.ProfileSuggestion
+import com.example.mykmp.domain.profile.UserProfile
 import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 /**
  * Состояние UI чата.
@@ -65,7 +62,14 @@ data class ChatUiState(
     val memorySearchResults: List<LongTermFact> = emptyList(),
     // Предложенные факты из StickyFacts → LongTerm (ожидают подтверждения)
     val suggestedFacts: Map<String, String> = emptyMap(),
-    val hasSuggestedFacts: Boolean = false
+    val hasSuggestedFacts: Boolean = false,
+    // Панель профилей
+    val isProfilePanelExpanded: Boolean = false,
+    val profiles: List<UserProfile> = emptyList(),
+    val activeProfileId: String? = null,
+    // Предложения обновления профиля (авто-экстракция)
+    val profileSuggestion: ProfileSuggestion? = null,
+    val hasProfileSuggestion: Boolean = false
 )
 
 /**
@@ -76,7 +80,8 @@ class ChatViewModel(
     private val chatRepository: ChatRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
     private val contextManager: ContextManager,
-    private val memoryManager: MemoryManager
+    private val memoryManager: MemoryManager,
+    private val profileManager: ProfileManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -87,11 +92,21 @@ class ChatViewModel(
 
     init {
         setupStrategyCallbacks()
+        setupProfileCallbacks()
         loadHistory()
         loadSettings()
         initContextStrategy()
         syncMemoryState()
+        syncProfileState()
         checkApiAccess()
+    }
+
+    /**
+     * Устанавливает callback'и для ProfileManager.
+     */
+    private fun setupProfileCallbacks() {
+        profileManager.onStateChanged = { syncProfileState() }
+        profileManager.onSuggestionReady = { suggestion -> onProfileSuggestion(suggestion) }
     }
 
     /**
@@ -250,7 +265,8 @@ class ChatViewModel(
         _uiState.update {
             it.copy(
                 isSettingsExpanded = !it.isSettingsExpanded,
-                isMemoryPanelExpanded = false // закрываем память при открытии настроек
+                isMemoryPanelExpanded = false,
+                isProfilePanelExpanded = false
             )
         }
     }
@@ -311,9 +327,11 @@ class ChatViewModel(
                 currentState.requestConfig
             )
 
-            // Комбинируем system prompt: стратегия + память
+            // Комбинируем system prompt: профиль → стратегия → память
+            val profilePrompt = profileManager.buildPersonalizationPrompt()
             val memoryPrompt = memoryManager.buildMemoryPrompt()
             val combinedSystemAddition = listOfNotNull(
+                profilePrompt,
                 contextResult.systemPromptAddition,
                 memoryPrompt
             ).joinToString("\n\n").ifBlank { null }
@@ -376,6 +394,13 @@ class ChatViewModel(
                     contextManager.onMessageReceived(
                         _uiState.value.messages,
                         currentState.requestConfig
+                    )
+
+                    // Авто-экстракция предпочтений для профиля
+                    profileManager.analyzeAndSuggest(
+                        _uiState.value.messages,
+                        currentState.requestConfig,
+                        chatRepository
                     )
                 },
                 onFailure = { error ->
@@ -482,7 +507,8 @@ class ChatViewModel(
         _uiState.update {
             it.copy(
                 isMemoryPanelExpanded = !it.isMemoryPanelExpanded,
-                isSettingsExpanded = false // закрываем настройки при открытии памяти
+                isSettingsExpanded = false,
+                isProfilePanelExpanded = false
             )
         }
     }
@@ -600,6 +626,138 @@ class ChatViewModel(
         "constraints" -> MemoryCategory.KNOWLEDGE.name
         "openQuestions" -> MemoryCategory.KNOWLEDGE.name
         else -> MemoryCategory.KNOWLEDGE.name
+    }
+
+    // === Панель профилей ===
+
+    fun onToggleProfilePanel() {
+        _uiState.update {
+            it.copy(
+                isProfilePanelExpanded = !it.isProfilePanelExpanded,
+                isSettingsExpanded = false,
+                isMemoryPanelExpanded = false
+            )
+        }
+    }
+
+    fun onCreateProfile(displayName: String) {
+        profileManager.createProfile(displayName)
+        syncProfileState()
+    }
+
+    fun onSwitchProfile(profileId: String) {
+        profileManager.switchProfile(profileId)
+        syncProfileState()
+    }
+
+    fun onUpdateProfile(profileId: String, update: ProfileSuggestion) {
+        profileManager.updateProfile(profileId, update)
+        syncProfileState()
+    }
+
+    fun onDeleteProfile(profileId: String) {
+        profileManager.deleteProfile(profileId)
+        syncProfileState()
+    }
+
+    fun onConfirmProfileSuggestion() {
+        val suggestion = _uiState.value.profileSuggestion ?: return
+        val activeId = _uiState.value.activeProfileId ?: return
+        profileManager.updateProfile(activeId, suggestion)
+        _uiState.update { it.copy(profileSuggestion = null, hasProfileSuggestion = false) }
+        syncProfileState()
+    }
+
+    fun onDismissProfileSuggestion() {
+        _uiState.update { it.copy(profileSuggestion = null, hasProfileSuggestion = false) }
+    }
+
+    // Методы обновления конкретных полей активного профиля через ProfileSuggestion-подобный подход
+    fun onAddLanguage(profileId: String, language: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        if (!profile.preferredLanguages.contains(language)) {
+            profileManager.updateProfile(profileId, ProfileSuggestion(preferredLanguages = listOf(language)))
+        }
+    }
+
+    fun onRemoveLanguage(profileId: String, language: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        val updated = profile.copy(preferredLanguages = profile.preferredLanguages.filter { it != language })
+        replaceProfile(profileId, updated)
+    }
+
+    fun onAddArchitecture(profileId: String, arch: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        if (!profile.architecturePrefs.contains(arch)) {
+            profileManager.updateProfile(profileId, ProfileSuggestion(architecturePrefs = listOf(arch)))
+        }
+    }
+
+    fun onRemoveArchitecture(profileId: String, arch: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        val updated = profile.copy(architecturePrefs = profile.architecturePrefs.filter { it != arch })
+        replaceProfile(profileId, updated)
+    }
+
+    fun onUpdateResponseStyle(profileId: String, style: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        replaceProfile(profileId, profile.copy(responseStyle = style))
+    }
+
+    fun onUpdateTone(profileId: String, tone: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        replaceProfile(profileId, profile.copy(tone = tone))
+    }
+
+    fun onUpdateExpertise(profileId: String, level: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        replaceProfile(profileId, profile.copy(expertiseLevel = level))
+    }
+
+    fun onAddBudgetLimit(profileId: String, key: String, value: String) {
+        profileManager.updateProfile(profileId, ProfileSuggestion(budgetLimits = mapOf(key to value)))
+    }
+
+    fun onRemoveBudgetLimit(profileId: String, key: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        replaceProfile(profileId, profile.copy(budgetLimits = profile.budgetLimits.filterKeys { it != key }))
+    }
+
+    fun onAddTimeConstraint(profileId: String, key: String, value: String) {
+        profileManager.updateProfile(profileId, ProfileSuggestion(timeConstraints = mapOf(key to value)))
+    }
+
+    fun onRemoveTimeConstraint(profileId: String, key: String) {
+        val profile = profileManager.getProfiles().find { it.id == profileId } ?: return
+        replaceProfile(profileId, profile.copy(timeConstraints = profile.timeConstraints.filterKeys { it != key }))
+    }
+
+    /**
+     * Синхронизирует состояние профилей → UI state.
+     */
+    private fun syncProfileState() {
+        _uiState.update {
+            it.copy(
+                profiles = profileManager.getProfiles(),
+                activeProfileId = profileManager.getActiveProfile()?.id
+            )
+        }
+    }
+
+    /**
+     * Обработка предложения обновления профиля из авто-экстракции.
+     */
+    private fun onProfileSuggestion(suggestion: ProfileSuggestion) {
+        if (suggestion.isEmpty()) return
+        _uiState.update { it.copy(profileSuggestion = suggestion, hasProfileSuggestion = true) }
+    }
+
+    /**
+     * Полная замена профиля (для операций удаления отдельных элементов).
+     */
+    private fun replaceProfile(profileId: String, updated: UserProfile) {
+        profileManager.replaceProfile(updated)
+        syncProfileState()
     }
 
     /**

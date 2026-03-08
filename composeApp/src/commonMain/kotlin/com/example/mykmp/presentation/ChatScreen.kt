@@ -1,80 +1,37 @@
 package com.example.mykmp.presentation
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.CircularProgressIndicator
-import com.mikepenz.markdown.m3.Markdown
-import com.mikepenz.markdown.m3.markdownColor
-import com.mikepenz.markdown.m3.markdownTypography
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.Key.Companion.R
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import com.example.mykmp.domain.context.ConversationBranch
 import com.example.mykmp.domain.context.ContextStrategyType
+import com.example.mykmp.domain.context.ConversationBranch
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ConversationSummary
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.FilterChip
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import myapplication.composeapp.generated.resources.Res
 import myapplication.composeapp.generated.resources.ic_copy_black
-import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -291,6 +248,42 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 )
             }
 
+            // Панель профилей (раскрывается над полем ввода)
+            AnimatedVisibility(
+                visible = uiState.isProfilePanelExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                ProfilePanel(
+                    profiles = uiState.profiles,
+                    activeProfileId = uiState.activeProfileId,
+                    onCreateProfile = viewModel::onCreateProfile,
+                    onSwitchProfile = viewModel::onSwitchProfile,
+                    onUpdateResponseStyle = viewModel::onUpdateResponseStyle,
+                    onUpdateTone = viewModel::onUpdateTone,
+                    onUpdateExpertise = viewModel::onUpdateExpertise,
+                    onAddLanguage = viewModel::onAddLanguage,
+                    onRemoveLanguage = viewModel::onRemoveLanguage,
+                    onAddArchitecture = viewModel::onAddArchitecture,
+                    onRemoveArchitecture = viewModel::onRemoveArchitecture,
+                    onAddBudgetLimit = viewModel::onAddBudgetLimit,
+                    onRemoveBudgetLimit = viewModel::onRemoveBudgetLimit,
+                    onAddTimeConstraint = viewModel::onAddTimeConstraint,
+                    onRemoveTimeConstraint = viewModel::onRemoveTimeConstraint,
+                    onDeleteProfile = viewModel::onDeleteProfile
+                )
+            }
+
+            // Баннер предложения обновления профиля
+            val profileSuggestion = uiState.profileSuggestion
+            if (uiState.hasProfileSuggestion && profileSuggestion != null) {
+                ProfileSuggestionBanner(
+                    suggestion = profileSuggestion,
+                    onConfirm = viewModel::onConfirmProfileSuggestion,
+                    onDismiss = viewModel::onDismissProfileSuggestion
+                )
+            }
+
             // Баннер предложенных фактов (StickyFacts → LongTerm)
             if (uiState.hasSuggestedFacts) {
                 SuggestedFactsBanner(
@@ -336,6 +329,17 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 ) {
                     Text(
                         text = if (uiState.isMemoryPanelExpanded) "\u2715" else "\uD83E\uDDE0",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                // Кнопка профиля 👤
+                IconButton(
+                    onClick = viewModel::onToggleProfilePanel,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Text(
+                        text = if (uiState.isProfilePanelExpanded) "\u2715" else "\uD83D\uDC64",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }

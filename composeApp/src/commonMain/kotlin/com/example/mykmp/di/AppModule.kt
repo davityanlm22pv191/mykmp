@@ -5,10 +5,14 @@ import com.example.mykmp.data.api.ClaudeApiClient
 import com.example.mykmp.data.repository.ChatHistoryRepositoryImpl
 import com.example.mykmp.data.repository.ChatRepositoryImpl
 import com.example.mykmp.data.repository.MemoryRepositoryImpl
+import com.example.mykmp.data.repository.ProfileRepositoryImpl
 import com.example.mykmp.domain.context.ContextManager
 import com.example.mykmp.domain.memory.MemoryManager
 import com.example.mykmp.domain.memory.MemoryManagerImpl
 import com.example.mykmp.domain.memory.MemoryRepository
+import com.example.mykmp.domain.profile.ProfileManager
+import com.example.mykmp.domain.profile.ProfileManagerImpl
+import com.example.mykmp.domain.profile.ProfileRepository
 import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
 import com.example.mykmp.presentation.ChatViewModel
@@ -50,10 +54,18 @@ object AppModule {
         MemoryManagerImpl(memoryRepository)
     }
 
+    private val profileRepository: ProfileRepository by lazy {
+        ProfileRepositoryImpl()
+    }
+
+    private val profileManager: ProfileManager by lazy {
+        ProfileManagerImpl(profileRepository)
+    }
+
     /**
      * Создаёт новый экземпляр ChatViewModel.
      */
     fun createChatViewModel(): ChatViewModel {
-        return ChatViewModel(chatRepository, chatHistoryRepository, contextManager, memoryManager)
+        return ChatViewModel(chatRepository, chatHistoryRepository, contextManager, memoryManager, profileManager)
     }
 }
