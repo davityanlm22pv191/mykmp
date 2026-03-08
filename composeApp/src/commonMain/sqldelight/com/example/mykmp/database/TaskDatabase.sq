@@ -1,0 +1,75 @@
+CREATE TABLE IF NOT EXISTS Tasks (
+    taskId TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'IDLE',
+    currentStep TEXT,
+    progress REAL NOT NULL DEFAULT 0.0,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS TaskTransitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL,
+    fromState TEXT NOT NULL,
+    toState TEXT NOT NULL,
+    step TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    timestamp INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS TaskWorkingMemory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    UNIQUE(taskId, key) ON CONFLICT REPLACE
+);
+
+CREATE TABLE IF NOT EXISTS TaskArtifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL,
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'text',
+    createdAt INTEGER NOT NULL
+);
+
+getAllTasks:
+SELECT * FROM Tasks ORDER BY updatedAt DESC;
+
+getTaskById:
+SELECT * FROM Tasks WHERE taskId = ?;
+
+insertTask:
+INSERT OR REPLACE INTO Tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateState:
+UPDATE Tasks SET state = ?, currentStep = ?, progress = ?, updatedAt = ? WHERE taskId = ?;
+
+deleteTask:
+DELETE FROM Tasks WHERE taskId = ?;
+
+insertTransition:
+INSERT INTO TaskTransitions(taskId, fromState, toState, step, reason, timestamp)
+VALUES (?, ?, ?, ?, ?, ?);
+
+getTransitions:
+SELECT * FROM TaskTransitions WHERE taskId = ? ORDER BY timestamp ASC;
+
+upsertMemory:
+INSERT OR REPLACE INTO TaskWorkingMemory(taskId, key, value, updatedAt) VALUES (?, ?, ?, ?);
+
+getMemory:
+SELECT key, value FROM TaskWorkingMemory WHERE taskId = ?;
+
+deleteMemoryKey:
+DELETE FROM TaskWorkingMemory WHERE taskId = ? AND key = ?;
+
+insertArtifact:
+INSERT INTO TaskArtifacts(taskId, name, content, type, createdAt) VALUES (?, ?, ?, ?, ?);
+
+getArtifacts:
+SELECT * FROM TaskArtifacts WHERE taskId = ? ORDER BY createdAt ASC;

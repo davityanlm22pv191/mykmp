@@ -39,7 +39,7 @@ import org.jetbrains.compose.resources.painterResource
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun ChatScreen(viewModel: ChatViewModel, onNavigateToDashboard: () -> Unit = {}) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
@@ -77,6 +77,14 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
                 actions = {
+                    // Кнопка задач 📋 — переход к TaskDashboard
+                    IconButton(onClick = onNavigateToDashboard) {
+                        Text(
+                            text = if (uiState.activeTask != null) "\uD83D\uDCCB\u25CF" else "\uD83D\uDCCB",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                    // Кнопка очистки истории 🗑️
                     if (uiState.messages.isNotEmpty()) {
                         IconButton(onClick = viewModel::onClearHistory) {
                             Text(
@@ -163,6 +171,21 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     onSwitchBranch = viewModel::onSwitchBranch,
                     onCreateBranch = { viewModel.onCreateBranch("Ветка ${uiState.branches.size}") },
                     onDeleteBranch = viewModel::onDeleteBranch
+                )
+            }
+
+            // Заголовок активной задачи FSM
+            val activeTask = uiState.activeTask
+            if (activeTask != null) {
+                val taskSuggestion = uiState.taskSuggestion
+                TaskChatHeader(
+                    task = activeTask,
+                    hasSuggestion = uiState.hasTaskSuggestion,
+                    suggestion = taskSuggestion,
+                    onAdvance = viewModel::onAdvanceTask,
+                    onPause = viewModel::onPauseTask,
+                    onDismissSuggestion = viewModel::onDismissTaskSuggestion,
+                    onOpenDashboard = onNavigateToDashboard
                 )
             }
 

@@ -2,10 +2,9 @@ package com.example.mykmp.di
 
 import com.example.mykmp.config.getApiKey
 import com.example.mykmp.data.api.ClaudeApiClient
-import com.example.mykmp.data.repository.ChatHistoryRepositoryImpl
-import com.example.mykmp.data.repository.ChatRepositoryImpl
-import com.example.mykmp.data.repository.MemoryRepositoryImpl
-import com.example.mykmp.data.repository.ProfileRepositoryImpl
+import com.example.mykmp.data.database.DatabaseDriverFactory
+import com.example.mykmp.data.repository.*
+import com.example.mykmp.database.TaskDatabase
 import com.example.mykmp.domain.context.ContextManager
 import com.example.mykmp.domain.memory.MemoryManager
 import com.example.mykmp.domain.memory.MemoryManagerImpl
@@ -15,7 +14,11 @@ import com.example.mykmp.domain.profile.ProfileManagerImpl
 import com.example.mykmp.domain.profile.ProfileRepository
 import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
+import com.example.mykmp.domain.task.TaskRepository
+import com.example.mykmp.domain.task.TaskStateMachine
+import com.example.mykmp.domain.task.TaskStateMachineImpl
 import com.example.mykmp.presentation.ChatViewModel
+import com.example.mykmp.presentation.TaskDashboardViewModel
 
 /**
  * Простой ручной DI-контейнер.
@@ -62,10 +65,40 @@ object AppModule {
         ProfileManagerImpl(profileRepository)
     }
 
+    private val driverFactory: DatabaseDriverFactory by lazy {
+        DatabaseDriverFactory()
+    }
+
+    private val taskDatabase: TaskDatabase? by lazy {
+        try { TaskDatabase(driverFactory.createDriver()) } catch (e: Exception) {
+            println("⚠️ SQLDelight не поддерживается на этой платформе: ${e.message}")
+            null
+        }
+    }
+
+    private val taskRepository: TaskRepository by lazy {
+        val db = taskDatabase ?: throw IllegalStateException("TaskDatabase недоступна")
+        TaskRepositoryImpl(db)
+    }
+
+    private val taskStateMachine: TaskStateMachine by lazy {
+        TaskStateMachineImpl(taskRepository)
+    }
+
     /**
      * Создаёт новый экземпляр ChatViewModel.
      */
     fun createChatViewModel(): ChatViewModel {
-        return ChatViewModel(chatRepository, chatHistoryRepository, contextManager, memoryManager, profileManager)
+        return ChatViewModel(
+            chatRepository, chatHistoryRepository, contextManager,
+            memoryManager, profileManager, taskStateMachine
+        )
+    }
+
+    /**
+     * Создаёт новый экземпляр TaskDashboardViewModel.
+     */
+    fun createTaskDashboardViewModel(): TaskDashboardViewModel {
+        return TaskDashboardViewModel(taskStateMachine, taskRepository)
     }
 }

@@ -16,6 +16,9 @@ import com.example.mykmp.domain.profile.ProfileSuggestion
 import com.example.mykmp.domain.profile.UserProfile
 import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
+import com.example.mykmp.domain.task.ExpectedAction
+import com.example.mykmp.domain.task.Task
+import com.example.mykmp.domain.task.TaskStateMachine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,7 +72,11 @@ data class ChatUiState(
     val activeProfileId: String? = null,
     // Предложения обновления профиля (авто-экстракция)
     val profileSuggestion: ProfileSuggestion? = null,
-    val hasProfileSuggestion: Boolean = false
+    val hasProfileSuggestion: Boolean = false,
+    // Активная задача FSM
+    val activeTask: Task? = null,
+    val taskSuggestion: ExpectedAction? = null,
+    val hasTaskSuggestion: Boolean = false
 )
 
 /**
@@ -81,7 +88,8 @@ class ChatViewModel(
     private val chatHistoryRepository: ChatHistoryRepository,
     private val contextManager: ContextManager,
     private val memoryManager: MemoryManager,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    private val taskStateMachine: TaskStateMachine
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -93,11 +101,13 @@ class ChatViewModel(
     init {
         setupStrategyCallbacks()
         setupProfileCallbacks()
+        setupTaskCallbacks()
         loadHistory()
         loadSettings()
         initContextStrategy()
         syncMemoryState()
         syncProfileState()
+        syncTaskState()
         checkApiAccess()
     }
 
@@ -107,6 +117,14 @@ class ChatViewModel(
     private fun setupProfileCallbacks() {
         profileManager.onStateChanged = { syncProfileState() }
         profileManager.onSuggestionReady = { suggestion -> onProfileSuggestion(suggestion) }
+    }
+
+    /**
+     * Устанавливает callback'и для TaskStateMachine.
+     */
+    private fun setupTaskCallbacks() {
+        taskStateMachine.onStateChanged = { syncTaskState() }
+        taskStateMachine.onSuggestionReady = { action -> onTaskSuggestion(action) }
     }
 
     /**
@@ -327,13 +345,15 @@ class ChatViewModel(
                 currentState.requestConfig
             )
 
-            // Комбинируем system prompt: профиль → стратегия → память
+            // Комбинируем system prompt: профиль → стратегия → память → задача
             val profilePrompt = profileManager.buildPersonalizationPrompt()
             val memoryPrompt = memoryManager.buildMemoryPrompt()
+            val taskPrompt = taskStateMachine.getSystemPromptAddition()
             val combinedSystemAddition = listOfNotNull(
                 profilePrompt,
                 contextResult.systemPromptAddition,
-                memoryPrompt
+                memoryPrompt,
+                taskPrompt
             ).joinToString("\n\n").ifBlank { null }
 
             // Замеряем время ответа
@@ -395,6 +415,9 @@ class ChatViewModel(
                         _uiState.value.messages,
                         currentState.requestConfig
                     )
+
+                    // Пост-обработка ответа в FSM задачи
+                    taskStateMachine.onMessageReceived(assistantText)
 
                     // Авто-экстракция предпочтений для профиля
                     profileManager.analyzeAndSuggest(
@@ -758,6 +781,44 @@ class ChatViewModel(
     private fun replaceProfile(profileId: String, updated: UserProfile) {
         profileManager.replaceProfile(updated)
         syncProfileState()
+    }
+
+    // === Задачи FSM ===
+
+    fun onAdvanceTask() {
+        viewModelScope.launch {
+            try { taskStateMachine.advance() } catch (e: Exception) {
+                println("❌ onAdvanceTask: ${e.message}")
+            }
+        }
+    }
+
+    fun onPauseTask() {
+        viewModelScope.launch {
+            try { taskStateMachine.pause() } catch (e: Exception) {
+                println("❌ onPauseTask: ${e.message}")
+            }
+        }
+    }
+
+    fun onResumeTask() {
+        viewModelScope.launch {
+            try { taskStateMachine.resume() } catch (e: Exception) {
+                println("❌ onResumeTask: ${e.message}")
+            }
+        }
+    }
+
+    fun onDismissTaskSuggestion() {
+        _uiState.update { it.copy(taskSuggestion = null, hasTaskSuggestion = false) }
+    }
+
+    private fun syncTaskState() {
+        _uiState.update { it.copy(activeTask = taskStateMachine.activeTask) }
+    }
+
+    private fun onTaskSuggestion(action: ExpectedAction) {
+        _uiState.update { it.copy(taskSuggestion = action, hasTaskSuggestion = true) }
     }
 
     /**
