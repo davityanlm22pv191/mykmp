@@ -6,6 +6,10 @@ import com.example.mykmp.data.api.ApiAccessChecker
 import com.example.mykmp.domain.context.ConversationBranch
 import com.example.mykmp.domain.context.ContextManager
 import com.example.mykmp.domain.context.ContextStrategyType
+import com.example.mykmp.domain.memory.LongTermFact
+import com.example.mykmp.domain.memory.MemoryCategory
+import com.example.mykmp.domain.memory.MemoryManager
+import com.example.mykmp.domain.memory.TaskMemory
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ChatRequestConfig
 import com.example.mykmp.domain.model.ConversationSummary
@@ -49,7 +53,19 @@ data class ChatUiState(
     val isFactsExpanded: Boolean = false,
     // Branching state
     val branches: List<ConversationBranch> = emptyList(),
-    val activeBranchId: String = "main"
+    val activeBranchId: String = "main",
+    // Панель памяти
+    val isMemoryPanelExpanded: Boolean = false,
+    // Рабочая память
+    val taskList: List<TaskMemory> = emptyList(),
+    val activeTaskId: String? = null,
+    // Долговременная память
+    val longTermFacts: List<LongTermFact> = emptyList(),
+    val memorySearchQuery: String = "",
+    val memorySearchResults: List<LongTermFact> = emptyList(),
+    // Предложенные факты из StickyFacts → LongTerm (ожидают подтверждения)
+    val suggestedFacts: Map<String, String> = emptyMap(),
+    val hasSuggestedFacts: Boolean = false
 )
 
 /**
@@ -59,7 +75,8 @@ data class ChatUiState(
 class ChatViewModel(
     private val chatRepository: ChatRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
-    private val contextManager: ContextManager
+    private val contextManager: ContextManager,
+    private val memoryManager: MemoryManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -73,6 +90,7 @@ class ChatViewModel(
         loadHistory()
         loadSettings()
         initContextStrategy()
+        syncMemoryState()
         checkApiAccess()
     }
 
@@ -85,6 +103,10 @@ class ChatViewModel(
         }
         contextManager.stickyFactsStrategy.onStateChanged = {
             syncStrategyState()
+        }
+        // Предложение извлечённых фактов для сохранения в долговременную память
+        contextManager.stickyFactsStrategy.onFactsExtracted = { facts ->
+            onSuggestFacts(facts)
         }
         contextManager.branchingStrategy.onStateChanged = {
             syncStrategyState()
@@ -225,7 +247,12 @@ class ChatViewModel(
      * Переключает видимость панели настроек.
      */
     fun onToggleSettings() {
-        _uiState.update { it.copy(isSettingsExpanded = !it.isSettingsExpanded) }
+        _uiState.update {
+            it.copy(
+                isSettingsExpanded = !it.isSettingsExpanded,
+                isMemoryPanelExpanded = false // закрываем память при открытии настроек
+            )
+        }
     }
 
     /**
@@ -284,13 +311,20 @@ class ChatViewModel(
                 currentState.requestConfig
             )
 
+            // Комбинируем system prompt: стратегия + память
+            val memoryPrompt = memoryManager.buildMemoryPrompt()
+            val combinedSystemAddition = listOfNotNull(
+                contextResult.systemPromptAddition,
+                memoryPrompt
+            ).joinToString("\n\n").ifBlank { null }
+
             // Замеряем время ответа
             val timeMark = TimeSource.Monotonic.markNow()
 
             val result = chatRepository.sendMessage(
                 contextResult.messagesToSend,
                 currentState.requestConfig,
-                contextResult.systemPromptAddition
+                combinedSystemAddition
             )
 
             val responseTimeMs = timeMark.elapsedNow().inWholeMilliseconds
@@ -437,6 +471,135 @@ class ChatViewModel(
     fun onDeleteBranch(branchId: String) {
         contextManager.branchingStrategy.deleteBranch(branchId)
         syncStrategyState()
+    }
+
+    // === Панель памяти ===
+
+    /**
+     * Переключает видимость панели памяти.
+     */
+    fun onToggleMemoryPanel() {
+        _uiState.update {
+            it.copy(
+                isMemoryPanelExpanded = !it.isMemoryPanelExpanded,
+                isSettingsExpanded = false // закрываем настройки при открытии памяти
+            )
+        }
+    }
+
+    // === Рабочая память ===
+
+    fun onCreateTask(taskId: String, name: String) {
+        memoryManager.createTask(taskId, name)
+        syncMemoryState()
+    }
+
+    fun onSetActiveTask(taskId: String) {
+        memoryManager.setActiveTask(taskId)
+        syncMemoryState()
+    }
+
+    fun onAddWorkingEntry(taskId: String, key: String, value: String) {
+        memoryManager.addWorkingEntry(taskId, key, value)
+        syncMemoryState()
+    }
+
+    fun onRemoveWorkingEntry(taskId: String, key: String) {
+        memoryManager.removeWorkingEntry(taskId, key)
+        syncMemoryState()
+    }
+
+    fun onDeleteTask(taskId: String) {
+        memoryManager.deleteTask(taskId)
+        syncMemoryState()
+    }
+
+    // === Долговременная память ===
+
+    fun onAddFact(category: String, key: String, value: String) {
+        memoryManager.addFact(category, key, value, source = "manual")
+        syncMemoryState()
+    }
+
+    fun onUpdateFact(factId: String, newValue: String) {
+        memoryManager.updateFact(factId, newValue)
+        syncMemoryState()
+    }
+
+    fun onDeleteFact(factId: String) {
+        memoryManager.deleteFact(factId)
+        syncMemoryState()
+    }
+
+    fun onSearchMemory(query: String) {
+        val results = memoryManager.searchFacts(query)
+        _uiState.update { it.copy(memorySearchQuery = query, memorySearchResults = results) }
+    }
+
+    // === Предложенные факты (StickyFacts → LongTerm) ===
+
+    /**
+     * Обработка предложенных фактов из StickyFactsStrategy.
+     */
+    fun onSuggestFacts(facts: Map<String, String>) {
+        if (facts.isEmpty()) return
+        _uiState.update { it.copy(suggestedFacts = facts, hasSuggestedFacts = true) }
+    }
+
+    /**
+     * Подтверждает факт из StickyFacts → сохраняет в долговременную память.
+     */
+    fun onConfirmFact(stickyKey: String, stickyValue: String) {
+        val category = mapStickyKeyToCategory(stickyKey)
+        memoryManager.addFact(category, stickyKey, stickyValue, source = "confirmed")
+        // Убираем подтверждённый из списка предложений
+        val remaining = _uiState.value.suggestedFacts.filterKeys { it != stickyKey }
+        _uiState.update { it.copy(suggestedFacts = remaining, hasSuggestedFacts = remaining.isNotEmpty()) }
+        syncMemoryState()
+    }
+
+    /**
+     * Отклоняет предложенный факт.
+     */
+    fun onDismissFact(stickyKey: String) {
+        val remaining = _uiState.value.suggestedFacts.filterKeys { it != stickyKey }
+        _uiState.update { it.copy(suggestedFacts = remaining, hasSuggestedFacts = remaining.isNotEmpty()) }
+    }
+
+    /**
+     * Отклоняет все предложенные факты.
+     */
+    fun onDismissAllSuggested() {
+        _uiState.update { it.copy(suggestedFacts = emptyMap(), hasSuggestedFacts = false) }
+    }
+
+    /**
+     * Синхронизирует состояние памяти → UI state.
+     */
+    private fun syncMemoryState() {
+        val taskList = memoryManager.getTaskList()
+        val activeTask = memoryManager.getActiveTask()
+        val facts = memoryManager.getAllFacts()
+        _uiState.update {
+            it.copy(
+                taskList = taskList,
+                activeTaskId = activeTask?.taskId,
+                longTermFacts = facts
+            )
+        }
+    }
+
+    /**
+     * Маппинг ключей StickyFacts → категории долговременной памяти.
+     */
+    private fun mapStickyKeyToCategory(stickyKey: String): String = when (stickyKey) {
+        "preferences" -> MemoryCategory.PREFERENCES.name
+        "decisions" -> MemoryCategory.DECISIONS.name
+        "techStack" -> MemoryCategory.KNOWLEDGE.name
+        "userGoal" -> MemoryCategory.KNOWLEDGE.name
+        "constraints" -> MemoryCategory.KNOWLEDGE.name
+        "openQuestions" -> MemoryCategory.KNOWLEDGE.name
+        else -> MemoryCategory.KNOWLEDGE.name
     }
 
     /**

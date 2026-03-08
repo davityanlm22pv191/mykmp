@@ -42,6 +42,9 @@ class StickyFactsStrategy(
     /** Callback для уведомления UI об изменении состояния. */
     var onStateChanged: (() -> Unit)? = null
 
+    /** Callback: предложить извлечённые факты для сохранения в долговременную память. */
+    var onFactsExtracted: ((Map<String, String>) -> Unit)? = null
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -206,6 +209,11 @@ class StickyFactsStrategy(
                         )
                         saveState()
                         println("✅ Факты извлечены: ${merged.size} категорий")
+
+                        // Предлагаем новые факты для сохранения в долговременную память
+                        if (extractedFacts.isNotEmpty()) {
+                            onFactsExtracted?.invoke(extractedFacts)
+                        }
                     } else {
                         // Обновляем lastProcessedMessageIndex даже если фактов нет
                         stickyFacts = stickyFacts.copy(

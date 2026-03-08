@@ -68,6 +68,7 @@ import com.example.mykmp.domain.context.ConversationBranch
 import com.example.mykmp.domain.context.ContextStrategyType
 import com.example.mykmp.domain.model.ChatMessage
 import com.example.mykmp.domain.model.ConversationSummary
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -267,6 +268,39 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 )
             }
 
+            // Панель памяти (раскрывается над полем ввода)
+            AnimatedVisibility(
+                visible = uiState.isMemoryPanelExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                MemoryPanel(
+                    taskList = uiState.taskList,
+                    activeTaskId = uiState.activeTaskId,
+                    longTermFacts = uiState.longTermFacts,
+                    memorySearchQuery = uiState.memorySearchQuery,
+                    memorySearchResults = uiState.memorySearchResults,
+                    onCreateTask = viewModel::onCreateTask,
+                    onSetActiveTask = viewModel::onSetActiveTask,
+                    onAddWorkingEntry = viewModel::onAddWorkingEntry,
+                    onRemoveWorkingEntry = viewModel::onRemoveWorkingEntry,
+                    onDeleteTask = viewModel::onDeleteTask,
+                    onAddFact = viewModel::onAddFact,
+                    onDeleteFact = viewModel::onDeleteFact,
+                    onSearchMemory = viewModel::onSearchMemory
+                )
+            }
+
+            // Баннер предложенных фактов (StickyFacts → LongTerm)
+            if (uiState.hasSuggestedFacts) {
+                SuggestedFactsBanner(
+                    suggestedFacts = uiState.suggestedFacts,
+                    onConfirm = viewModel::onConfirmFact,
+                    onDismiss = viewModel::onDismissFact,
+                    onDismissAll = viewModel::onDismissAllSuggested
+                )
+            }
+
             // Оценка токенов перед отправкой
             if (uiState.inputText.isNotBlank() && uiState.estimatedInputTokens > 0) {
                 Text(
@@ -291,6 +325,17 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 ) {
                     Text(
                         text = if (uiState.isSettingsExpanded) "\u2715" else "\u2630", // ✕ или ☰
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                // Кнопка памяти 🧠
+                IconButton(
+                    onClick = viewModel::onToggleMemoryPanel,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Text(
+                        text = if (uiState.isMemoryPanelExpanded) "\u2715" else "\uD83E\uDDE0",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -695,6 +740,74 @@ private fun BranchTabBar(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+/**
+ * Баннер предложенных фактов: показывает извлечённые StickyFacts
+ * для подтверждения/отклонения перед сохранением в долговременную память.
+ */
+@Composable
+private fun SuggestedFactsBanner(
+    suggestedFacts: Map<String, String>,
+    onConfirm: (key: String, value: String) -> Unit,
+    onDismiss: (key: String) -> Unit,
+    onDismissAll: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Сохранить в память?",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            TextButton(onClick = onDismissAll) {
+                Text(
+                    "Пропустить все",
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+
+        suggestedFacts.forEach { (key, value) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "[$key] $value",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                Row {
+                    TextButton(
+                        onClick = { onConfirm(key, value) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Text("\u2713", color = MaterialTheme.colorScheme.primary)
+                    }
+                    TextButton(
+                        onClick = { onDismiss(key) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Text("\u2717", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
         }
     }
 }

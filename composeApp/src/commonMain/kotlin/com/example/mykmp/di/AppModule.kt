@@ -4,7 +4,11 @@ import com.example.mykmp.config.getApiKey
 import com.example.mykmp.data.api.ClaudeApiClient
 import com.example.mykmp.data.repository.ChatHistoryRepositoryImpl
 import com.example.mykmp.data.repository.ChatRepositoryImpl
+import com.example.mykmp.data.repository.MemoryRepositoryImpl
 import com.example.mykmp.domain.context.ContextManager
+import com.example.mykmp.domain.memory.MemoryManager
+import com.example.mykmp.domain.memory.MemoryManagerImpl
+import com.example.mykmp.domain.memory.MemoryRepository
 import com.example.mykmp.domain.repository.ChatHistoryRepository
 import com.example.mykmp.domain.repository.ChatRepository
 import com.example.mykmp.presentation.ChatViewModel
@@ -38,10 +42,18 @@ object AppModule {
         ContextManager(chatRepository, chatHistoryRepository)
     }
 
+    private val memoryRepository: MemoryRepository by lazy {
+        MemoryRepositoryImpl()
+    }
+
+    private val memoryManager: MemoryManager by lazy {
+        MemoryManagerImpl(memoryRepository)
+    }
+
     /**
      * Создаёт новый экземпляр ChatViewModel.
      */
     fun createChatViewModel(): ChatViewModel {
-        return ChatViewModel(chatRepository, chatHistoryRepository, contextManager)
+        return ChatViewModel(chatRepository, chatHistoryRepository, contextManager, memoryManager)
     }
 }
